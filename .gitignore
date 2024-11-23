@@ -8,6 +8,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+plugins/instantclient_19_25
 build/
 develop-eggs/
 dist/
