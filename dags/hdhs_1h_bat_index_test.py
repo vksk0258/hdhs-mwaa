@@ -8,10 +8,17 @@ import time
 
 
 client_path = Variable.get("client_path")
+start_time_str = Variable.get("start_time")
+end_time_str = Variable.get("end_time")
 def oracle_conn_main_test():
     start = time.time()
     oracle_hook = OracleHook(oracle_conn_id='conn_oracle_main',thick_mode=True,thick_mode_lib_dir=client_path)
-    sql = "SELECT * FROM HDHS_OD.OD_CRD_APRVL_LOG_CRYPT WHERE CHG_DTM BETWEEN TO_DATE('2024-11-20 13:00:00', 'YYYY-MM-DD HH24:MI:SS') AND TO_DATE('2024-11-20 14:00:00', 'YYYY-MM-DD HH24:MI:SS')"
+    sql = f"""
+    SELECT * 
+    FROM HDHS_OD.OD_STLM_INF_CRYPT 
+    WHERE CHG_DTM BETWEEN TO_DATE('{start_time_str}', 'YYYY-MM-DD HH24:MI:SS') 
+                      AND TO_DATE('{end_time_str}', 'YYYY-MM-DD HH24:MI:SS')
+    """
     connection = oracle_hook.get_conn()
     cursor = connection.cursor()
     print(cursor)
@@ -33,7 +40,7 @@ def oracle_conn_main_test():
     return
 
 with DAG(
-    dag_id="hdhs_conn_test_main_thick",
+    dag_id="hdhs_1h_bat_index_test",
     schedule_interval=None,
     tags=["현대홈쇼핑"]
 ) as dag:
