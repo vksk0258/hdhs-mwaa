@@ -7,16 +7,15 @@ from airflow.models import DagRun, TaskFail, TaskInstance
 import csv, re
 from io import StringIO
 
-DAG_ID = os.path.basename(__file__).replace(".py", "")
+DAG_ID = 'metadata_to_csv'
 
 MAX_AGE_IN_DAYS = 30
-S3_BUCKET = 's3://hdhs-dw-mwaa-s3/metadata/'
-S3_KEY = 'files/export/meta.csv'
+S3_BUCKET = 'hdhs-dw-mwaa-s3'
+S3_KEY = 'backup/meta/meta{0}.csv'
 
 # You can add other objects to export from the metadatabase,
 OBJECTS_TO_EXPORT = [
     [DagRun, DagRun.execution_date],
-    [TaskFail, TaskFail.execution_date],
     [TaskInstance, TaskInstance.execution_date],
 ]
 
