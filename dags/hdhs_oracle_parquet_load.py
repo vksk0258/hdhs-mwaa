@@ -6,7 +6,6 @@ from airflow.models import Variable
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-import os
 import datetime
 
 # 전역 변수 정의
@@ -29,7 +28,7 @@ def oracle_conn_main_test():
 
         # Parquet 파일을 스트림 방식으로 쓰기
         # Arrow Table과 Parquet Writer 초기화
-        arrow_schema = pa.schema([(col, pa.string()) for col in headers])  # 모든 컬럼을 문자열로 정의
+        arrow_schema = pa.schema([(col, pa.string()) if col != 'APRVL_DTM' else (col, pa.timestamp('ns')) for col in headers])  # 데이터 타입 정의
         with pq.ParquetWriter(output_path, arrow_schema) as writer:
             while True:
                 # 데이터를 한 번에 가져오는 크기 설정 (chunk size)
@@ -40,8 +39,12 @@ def oracle_conn_main_test():
                 # Pandas DataFrame으로 변환
                 df = pd.DataFrame(rows, columns=headers)
 
+                # datetime 컬럼을 처리 (예: APRVL_DTM)
+                if 'APRVL_DTM' in df.columns:
+                    df['APRVL_DTM'] = pd.to_datetime(df['APRVL_DTM'])  # 명시적으로 datetime 변환
+
                 # Pandas DataFrame을 Arrow Table로 변환
-                table = pa.Table.from_pandas(df, schema=arrow_schema)
+                table = pa.Table.from_pandas(df)
 
                 # Parquet 파일에 쓰기
                 writer.write_table(table)
