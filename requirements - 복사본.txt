@@ -24,6 +24,7 @@ apache-airflow-providers-oracle
 apache-airflow-providers-postgres
 apache-airflow-providers-smtp
 apache-airflow-providers-snowflake
+apache-airflow-providers-odbc
 apache-airflow-providers-sqlite
 apispec
 argcomplete

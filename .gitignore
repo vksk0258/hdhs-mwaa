@@ -9,7 +9,9 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+plugins/
 plugins.zip
+plugins_20241211
 plugins/instantclient_19_25
 plugins/plugins_whl
 build/

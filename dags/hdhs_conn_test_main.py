@@ -7,13 +7,12 @@ import pendulum
 
 client_path = Variable.get("client_path")
 def oracle_conn_main_test():
-    oracle_hook = OracleHook(oracle_conn_id='conn_oracle_main')
+    oracle_hook = OracleHook(oracle_conn_id='conn_oracle_main',thick_mode=True,thick_mode_lib_dir=client_path)
     connection = oracle_hook.get_conn()
     cursor = connection.cursor()
     print(cursor)
     cursor.close()
     connection.close()
-    return
 
 with DAG(
     dag_id="hdhs_conn_test_main",

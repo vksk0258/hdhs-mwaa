@@ -5,6 +5,7 @@ import boto3
 from airflow.utils.dates import days_ago
 from airflow.models import DagRun, TaskFail, TaskInstance
 import csv, re
+from airflow.providers.odbc.hooks.odbc import OdbcHook
 from io import StringIO
 
 DAG_ID = 'metadata_to_csv'

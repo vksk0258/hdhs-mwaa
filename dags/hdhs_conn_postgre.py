@@ -12,7 +12,7 @@ def oracle_conn_test():
     print(cursor)
     cursor.close()
     connection.close()
-    return
+
 
 with DAG(
     dag_id="hdhs_conn_postgres",
@@ -23,5 +23,17 @@ with DAG(
         task_id='oracle_conn_test_task',
         python_callable=oracle_conn_test
     )
+    def insrt_postgres(ip, port, dbname, user, passwd, **kwargs):
+        import psycopg2
+        from contextlib import closing
 
-    oracle_conn_test_task
+        with closing(psycopg2.connect(host=ip, dbname=dbname, user=user, password=passwd, port=int(port))) as conn:
+            with closing(conn.cursor()) as cursor:
+                print(cursor)
+    insrt_postgres = PythonOperator(
+        task_id='insrt_postgres',
+        python_callable=insrt_postgres,
+        op_args=['10.4.128.11', '5432', 'pg_am_prd', 'hshs_reading', 'hshop1!']
+    )
+
+    [oracle_conn_test_task,insrt_postgres]

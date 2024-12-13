@@ -10,16 +10,16 @@ def load_data():
     snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
     connection = snowflake_hook.get_conn()
     cursor = connection.cursor()
-    cursor.execute("PUT file:///tmp/output2.csv @MWAA_STAGE")
+    cursor.execute("PUT s3://hdhs-dw-mwaa-s3/backup/oracle_data2.parquet @MWAA_STAGE")
 
     point5 = time.time()
     pprint.pprint(f"PUT을 활용해서 CSV파일을 스테이지에 업로드 하는 시간: {point5 - point4} sec")
     # 데이터 로드
-    cursor.execute("""
-            COPY INTO OD_HPNT_PAY_APRVL_DTL_CRYPT
-            FROM @MWAA_STAGE/output2.csv
-            FILE_FORMAT = (TYPE = 'CSV', FIELD_OPTIONALLY_ENCLOSED_BY='"',  SKIP_HEADER = 1)
-        """)
+    # cursor.execute("""
+    #         COPY INTO OD_HPNT_PAY_APRVL_DTL_CRYPT
+    #         FROM @MWAA_STAGE/output2.csv
+    #         FILE_FORMAT = (TYPE = 'CSV', FIELD_OPTIONALLY_ENCLOSED_BY='"',  SKIP_HEADER = 1)
+    #     """)
 
     connection.close()
     cursor.close()

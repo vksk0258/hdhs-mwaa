@@ -9,9 +9,10 @@ import oracledb
 
 
 client_path = Variable.get("client_path")
+sql_query = Variable.get("query")
 def oracle_conn_main_test():
     oracle_hook = OracleHook(oracle_conn_id='conn_oracle_main',thick_mode=True,thick_mode_lib_dir=client_path)
-    sql = "SELECT * FROM HDHS_OD.OD_CRD_APRVL_LOG_CRYPT"
+    sql = sql_query
     connection = oracle_hook.get_conn()
     cursor = connection.cursor()
     print(cursor)
@@ -24,7 +25,7 @@ def oracle_conn_main_test():
     print(df.head(5))
     cursor.close()
     connection.close()
-    return
+    return data
 
 with DAG(
     dag_id="hdhs_main_APRVL_LOG_test",
