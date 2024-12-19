@@ -16,11 +16,12 @@ with DAG(
     dagrun_timeout=datetime.timedelta(minutes=60),
     tags=["인프런",'python']
 ) as dag:
-    def select_fruit():
+    def select_fruit(**kwargs):
         fruit = ['APPLE','BANANA','ORAGNE','AVOCADO']
         #0~3랜덤 정수 값
         rand_int = random.randint(0,3)
         print(fruit[rand_int])
+        print(kwargs)
 
     py_t1 = PythonOperator(
         task_id='py_t1',

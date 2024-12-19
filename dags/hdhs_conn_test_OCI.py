@@ -3,6 +3,11 @@ from airflow.providers.oracle.hooks.oracle import OracleHook
 from airflow.operators.python import PythonOperator
 import pandas as pd
 import pendulum
+from airflow.models import Variable
+import pandas as pd
+
+client_path = Variable.get("client_path")
+sql = Variable.get("query")
 
 def oracle_conn_test():
     oracle_hook = OracleHook(oracle_conn_id='conn_oracle_H2O')

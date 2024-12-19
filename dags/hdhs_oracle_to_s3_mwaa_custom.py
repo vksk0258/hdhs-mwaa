@@ -13,7 +13,7 @@ dag = DAG(
     dag_id='hdhs_oracle_to_s3_chunked',
     description='Extract Oracle data in chunks, save as CSV to /tmp, upload to S3 one by one, and clean up local files',
     schedule_interval=None,
-    dagrun_timeout=datetime.timedelta(minutes=1500),
+    dagrun_timeout=datetime.timedelta(minutes=2400),
     tags=['oracle', 's3', 'mwaa'],
 )
 
@@ -23,7 +23,7 @@ S3_BUCKET_NAME = "hdhs-dw-migdata-s3"
 S3_PREFIX = "dw/HDHS_OD/OD_STLM_INF_CRYPT/"
 ORACLE_CONN_ID = "conn_oracle_main"
 TABLE_NAME = "OD_STLM_INF_CRYPT"
-CHUNK_SIZE = 100000  # 한 번에 처리할 행 개수 (예: 10만 행)
+CHUNK_SIZE = 200000  # 한 번에 처리할 행 개수 (예: 50만 행)
 
 
 def extract_and_upload_chunks():
@@ -51,6 +51,11 @@ def extract_and_upload_chunks():
             ) WHERE row_num > {offset}
         """
         df = pd.read_sql(query, conn)
+
+        # ROWNUM 컬럼 제거
+        if 'ROW_NUM' in df.columns:
+            df = df.drop(columns=['ROW_NUM'])
+
         file_name = f"{TMP_DIR}/LOAD{chunk_index:08d}.csv"  # 파일 이름 형식
         # 헤더 제외하고 저장
         df.to_csv(file_name, index=False, header=False)
@@ -69,6 +74,7 @@ def extract_and_upload_chunks():
 
     cursor.close()
     conn.close()
+
 
 
 # 태스크 정의

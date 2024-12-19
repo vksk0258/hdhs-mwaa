@@ -3,10 +3,7 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.oracle.hooks.oracle import OracleHook
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 import pendulum
-import pandas as pd
 import datetime
-import pprint
-import time
 from airflow.models import Variable
 
 client_path = Variable.get("client_path")
@@ -29,62 +26,63 @@ table_list = [
     "HDHS_DW.CP_CUST_PSN_INF_CHK_MST",
     "HDHS_DW.CP_CUST_SMS_TEL_CHK_MST",
     "HDHS_DW.CP_CUST_DSTN_ADR_CHK_MST",
-    "DW_PROM.A_PRO_CUST",
     "HDHS_DW.AN_PRMO_CUST_DTL",
     "HDHS_OD.OD_ORD_DTL"
 ]
 
+def setup_connections():
+    global oracle_connection, snowflake_connection
+    oracle_hook = OracleHook(oracle_conn_id='conn_oracle_main', thick_mode=True, thick_mode_lib_dir=client_path)
+    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
+    oracle_connection = oracle_hook.get_conn()
+    snowflake_connection = snowflake_hook.get_conn()
+    print("Connections initialized.")
+
+# 커넥션 종료
+def close_connections():
+    global oracle_connection, snowflake_connection
+    if oracle_connection:
+        oracle_connection.close()
+    if snowflake_connection:
+        snowflake_connection.close()
+    print("Connections closed.")
+
 def oracle_value_extract(table_name):
-    oracle_hook = OracleHook(oracle_conn_id='conn_oracle_main',thick_mode=True,thick_mode_lib_dir=client_path)
+    global oracle_connection
     if table_name == "HDHS_OD.OD_ORD_DTL":
         ora_query = "select count(*),SUM(LAST_STLM_AMT) from "+table_name
-        connection = oracle_hook.get_conn()
-        cursor = connection.cursor()
-        result = cursor.execute(ora_query).fetchall()
-        print(result)
-        cursor.close()
-        connection.close()
     else:
         ora_query = "select count(*) from "+table_name
-        connection = oracle_hook.get_conn()
-        cursor = connection.cursor()
-        result = cursor.execute(ora_query).fetchall()
-        print(result)
-        cursor.close()
-        connection.close()
+    connection = oracle_connection.get_conn()
+    cursor = connection.cursor()
+    result = cursor.execute(ora_query).fetchall()
+    print(result)
+    cursor.close()
+    connection.close()
     return result
 
 def snow_value_extract(table_name):
-    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
+    global snowflake_connection
     if table_name == "HDHS_OD.OD_ORD_DTL":
         snow_query = "select count(*),SUM(LAST_STLM_AMT) from DW_LOAD_DB."+table_name
-        connection = snowflake_hook.get_conn()
-        cursor = connection.cursor()
-        result = cursor.execute(snow_query).fetchall()
-        print(result)
-        cursor.close()
-        connection.close()
     else:
         snow_query = "select count(*) from DW_LOAD_DB."+table_name
-        connection = snowflake_hook.get_conn()
-        cursor = connection.cursor()
-        result = cursor.execute(snow_query).fetchall()
-        print(result)
-        cursor.close()
-        connection.close()
+    connection = snowflake_connection.get_conn()
+    cursor = connection.cursor()
+    result = cursor.execute(snow_query).fetchall()
+    print(result)
+    cursor.close()
+    connection.close()
     return result
 
 def insert_comparison_results(table_name,**kwargs):
     # Snowflake Hook 연결
-    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
-    connection = snowflake_hook.get_conn()
+    global snowflake_connection
+    connection = snowflake_connection.get_conn()
     cursor = connection.cursor()
 
     # DAG 실행 시간에 8시간을 추가
-    execution_date = (
-            datetime.datetime.strptime(kwargs['ts'], '%Y-%m-%dT%H:%M:%S.%f%z') + datetime.timedelta(hours=9)
-    ).strftime('%Y-%m-%d %H:%M:%S')
-
+    execution_date = kwargs['execution_date'].in_tz(pendulum.timezone("Asia/Seoul"))
     snow_db_name = 'DW_LOAD_DB'
     schema_name = table_name.split(".")[0]
     table = table_name.split(".")[1]
@@ -99,37 +97,7 @@ def insert_comparison_results(table_name,**kwargs):
         ora_sum = int(kwargs['ti'].xcom_pull(task_ids=f'oracle_value_extract_{table_name.replace(".", "_")}')[0][1])
 
         # 차이값 계산
-        minus_cnt = ora_cnt - snow_cnt
         minus_sum = ora_sum - snow_sum
-        DIFF_RANGE = (minus_cnt / ora_cnt) * 100
-
-        # INSERT 쿼리
-        insert_query = """
-        INSERT INTO DW_LOAD_DB.CONFIG.TB_DATA_VERIFY (
-            VERIFY_DATE, DATABASE_NAME, SCHEMA_NAME, TABLE_NAME, 
-            ORA_CNT, SNOW_CNT,
-            ORA_SUM, SNOW_SUM,
-            MINUS_CNT, MINUS_SUM, DIFF_RANGE
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        parameters = (
-            execution_date,
-            snow_db_name,
-            schema_name,
-            table,
-            ora_cnt,
-            snow_cnt,
-            ora_sum,
-            snow_sum,
-            minus_cnt,
-            minus_sum,
-            DIFF_RANGE
-        )
-        cursor.execute(insert_query, parameters)
-        connection.commit()
-        cursor.close()
-        connection.close()
 
     else:
         # SUM 값 (필요 시 수정)
@@ -137,37 +105,39 @@ def insert_comparison_results(table_name,**kwargs):
         ora_sum = 0
 
         # 차이값 계산
-        minus_cnt = ora_cnt - snow_cnt
-        minus_sum = 0
-        DIFF_RANGE = (minus_cnt / ora_cnt) * 100
 
-        # INSERT 쿼리
-        insert_query = """
-        INSERT INTO DW_LOAD_DB.CONFIG.TB_DATA_VERIFY (
-            VERIFY_DATE, DATABASE_NAME, SCHEMA_NAME, TABLE_NAME, 
-            ORA_CNT, SNOW_CNT,
-            ORA_SUM, SNOW_SUM,
-            MINUS_CNT, MINUS_SUM, DIFF_RANGE
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        parameters = (
-            execution_date,
-            snow_db_name,
-            schema_name,
-            table,
-            ora_cnt,
-            snow_cnt,
-            ora_sum,
-            snow_sum,
-            minus_cnt,
-            minus_sum,
-            DIFF_RANGE
-        )
-        cursor.execute(insert_query, parameters)
-        connection.commit()
-        cursor.close()
-        connection.close()
+        minus_sum = 0
+
+    minus_cnt = ora_cnt - snow_cnt
+    DIFF_RANGE = (minus_cnt / ora_cnt) * 100
+
+    # INSERT 쿼리
+    insert_query = """
+    INSERT INTO DW_LOAD_DB.CONFIG.TB_DATA_VERIFY (
+        VERIFY_DATE, DATABASE_NAME, SCHEMA_NAME, TABLE_NAME, 
+        ORA_CNT, SNOW_CNT,
+        ORA_SUM, SNOW_SUM,
+        MINUS_CNT, MINUS_SUM, DIFF_RANGE
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    parameters = (
+        execution_date,
+        snow_db_name,
+        schema_name,
+        table,
+        ora_cnt,
+        snow_cnt,
+        ora_sum,
+        snow_sum,
+        minus_cnt,
+        minus_sum,
+        DIFF_RANGE
+    )
+    cursor.execute(insert_query, parameters)
+    connection.commit()
+    cursor.close()
+    connection.close()
 
 
 with DAG(
