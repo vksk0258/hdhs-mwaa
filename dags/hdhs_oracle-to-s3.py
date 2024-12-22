@@ -9,17 +9,29 @@ import os
 # 설정 상수
 client_path = Variable.get("client_path")
 S3_BUCKET_NAME = "hdhs-dw-migdata-s3"
-S3_PREFIX = "dw/HDHS_OD/OD_STLM_INF_CRYPT/"
+S3_PREFIX = "dw/HDHS_OD/OD_STLM_INF_CRYPT_TEMP/"
 ORACLE_CONN_ID = "conn_oracle_main"
 TABLE_NAME = "OD_STLM_INF_CRYPT"
 BATCH_SIZE = 1000000  # 한 파일당 저장할 행 수
 TMP_DIR = "/tmp/oracle_to_s3"
-MAX_RETRIES = 5  # 최대 재시도 횟수
+
+MASKING_COLUMNS = {
+    "OD_STLM_INF_CRYPT": ["OWN_CUST_NM", "CRD_VLID_TERM_YM"]
+}
+
+def mask_columns(df, table_name):
+    """
+    특정 테이블의 컬럼을 마스킹 처리합니다.
+    """
+    if table_name in MASKING_COLUMNS:
+        for col in MASKING_COLUMNS[table_name]:
+            if col in df.columns:
+                df[col] = 'xxxx'
+    return df
 
 with DAG(
     dag_id="hdhs_oracle-to-s3",  # DAG의 고유 식별자
     schedule=None,  # DAG의 예약 일정 없음 (수동 실행)
-    catchup=False,  # 과거 데이터 실행을 스킵
     dagrun_timeout=datetime.timedelta(minutes=4000),  # DAG 실행 제한 시간
     tags=["현대홈쇼핑","검증"]  # DAG에 붙일 태그
 ) as dag:
@@ -34,33 +46,50 @@ with DAG(
         # 파일 이름 카운터
         chunk_index = 1
 
-        # SQL 실행 (OFFSET-FETCH 또는 ROWNUM 사용)
-        offset = 0
-
         oracle_hook = OracleHook(oracle_conn_id='conn_oracle_main', thick_mode=True, thick_mode_lib_dir=client_path)
         oracle_connection = oracle_hook.get_conn()
 
         while True:
+            # S3에 해당 파일이 있는지 먼저 확인
+            s3_key = f"{S3_PREFIX}LOAD{chunk_index:08d}.csv"
+            s3_path = f"s3://{S3_BUCKET_NAME}/{s3_key}"
+
+            res = os.system(f"aws s3 ls {s3_path} > /dev/null 2>&1")
+            if res == 0:
+                print(f"File {s3_key} already exists in S3. Skipping upload.")
+                chunk_index += 1
+                continue
+
+            # SQL 실행 (OFFSET-FETCH 또는 ROWNUM 사용)
+            offset = (chunk_index - 1) * BATCH_SIZE
             query = f"""
-                SELECT * FROM (
-                    SELECT a.*, ROWNUM rnum FROM (
-                        SELECT * FROM {TABLE_NAME}
-                    ) a WHERE ROWNUM <= {offset + BATCH_SIZE}
-                ) WHERE rnum > {offset}
+                SELECT * 
+                FROM HDHS_OD.{TABLE_NAME}
+                OFFSET {offset} ROWS FETCH NEXT {BATCH_SIZE} ROWS ONLY
             """
 
+            print(f"offset={offset}, BATCH_SIZE={BATCH_SIZE}, chunk_index={chunk_index}")
+            print(f"query={query}")
             df = pd.read_sql(query, oracle_connection)
 
+            print("read_sql pass")
+
             if df.empty:
+                print("df empty 실행")
                 break
 
+            print("df empty pass")
+
+            # 컬럼 마스킹 처리
+            df = mask_columns(df, TABLE_NAME)
+
             file_name = f"{TMP_DIR}/LOAD{chunk_index:08d}.csv"  # 파일 이름 형식
-            # 헤더 제외하고 저장
+
+            # CSV 저장
             df.to_csv(file_name, index=False, header=False)
             print(f"Chunk {chunk_index} saved to {file_name}")
 
             # S3 업로드
-            s3_path = f"s3://{S3_BUCKET_NAME}/{S3_PREFIX}LOAD{chunk_index:08d}.csv"
             os.system(f"aws s3 cp {file_name} {s3_path}")
             print(f"Uploaded {file_name} to {s3_path}")
 
@@ -71,6 +100,7 @@ with DAG(
             chunk_index += 1
 
         oracle_connection.close()
+        print("커넥션 종료")
 
 
     oracle_to_s3_upload=oracle_to_s3_upload()
