@@ -20,7 +20,7 @@ with DAG(
     dag_id="hdhs_oracle-to-s3",  # DAG의 고유 식별자
     schedule=None,  # DAG의 예약 일정 없음 (수동 실행)
     catchup=False,  # 과거 데이터 실행을 스킵
-    dagrun_timeout=datetime.timedelta(minutes=1200),  # DAG 실행 제한 시간
+    dagrun_timeout=datetime.timedelta(minutes=4000),  # DAG 실행 제한 시간
     tags=["현대홈쇼핑","검증"]  # DAG에 붙일 태그
 ) as dag:
     @task(task_id='oracle_to_s3_upload', retries=10, retry_delay=datetime.timedelta(seconds=10))
