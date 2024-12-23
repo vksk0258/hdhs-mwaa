@@ -26,7 +26,7 @@ def mask_columns(df, table_name):
     if table_name in MASKING_COLUMNS:
         for col in MASKING_COLUMNS[table_name]:
             if col in df.columns:
-                df[col] = 'xxxx'
+                df[col] = 'XXXX'
     return df
 
 with DAG(

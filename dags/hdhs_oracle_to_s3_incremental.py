@@ -14,7 +14,8 @@ client_path = Variable.get("client_path")
 # 환경 설정
 TMP_DIR = "/tmp/oracle_incremental"
 S3_BUCKET_NAME = "hdhs-dw-migdata-s3"
-ORACLE_CONN_ID = "conn_oracle_main"
+ORACLE_CONN_ID_OCI = "conn_oracle_H2O"
+ORACLE_CONN_ID_MAIN = "conn_oracle_main"
 TABLE_NAME_LIST = [
     "HDHS_OD.OD_STLM_INF_CRYPT",
     "HDHS_CU.CU_ARS_LDIN_MST_CRYPT",
@@ -27,9 +28,9 @@ TABLE_NAME_LIST = [
 MASKING_COLUMNS = {
     "CU_ARS_LDIN_MST_CRYPT": ["TELI", "TEL", "CUST_NM", "ECRYPT_CRD_NO", "CRD_VLID_TERM_YM"],
     "TEC_CONT_CORP_CRYPT": ["ADDR", "VEN_TEL", "EMAIL", "CUST_PERS1_HP", "CUST_PERS2_NAME", "CUST_PERS2_TEL", "CUST_PERS2_HP", "CUST_PERS2_ID"],
-    "OD_CRD_APRVL_LOG_CRYPT": ["ECRYPT_CRD_NO", "VLID_TERM_YM"],
+    "OD_CRD_APRVL_LOG_CRYPT": ["ECRYT_CRD_NO", "VLID_TERM_YM"],
     "OD_HPNT_PAY_APRVL_DTL_CRYPT": ["MALL_ID"],
-    "OD_STLM_INF_CRYPT": ["OWN_CUST_NM", "CRD_VLID_TERM_YM"]
+    "OD_STLM_INF_CRYPT": ["OWN_CUST_NM", "RD_VLID_TERM_YM"]
 }
 
 def incremental_load(table, **kwargs):
@@ -37,7 +38,17 @@ def incremental_load(table, **kwargs):
     if not os.path.exists(TMP_DIR):
         os.makedirs(TMP_DIR)
 
-    oracle_hook = OracleHook(oracle_conn_id=ORACLE_CONN_ID, thick_mode=True, thick_mode_lib_dir=client_path)
+    if table in [
+        "HDHS_OD.OD_HPNT_PAY_APRVL_DTL_CRYPT",
+        "HDHS_OD.OD_CRD_APRVL_LOG_CRYPT",
+        "HDHS_ECS.TEC_CONT_CORP_CRYPT"
+    ]:
+        oracle_conn_id = ORACLE_CONN_ID_OCI
+    else:
+        oracle_conn_id = ORACLE_CONN_ID_MAIN
+
+    oracle_hook = OracleHook(oracle_conn_id=oracle_conn_id, thick_mode=True, thick_mode_lib_dir=client_path)
+
     conn = oracle_hook.get_conn()
     cursor = conn.cursor()
 
@@ -93,8 +104,8 @@ def incremental_load(table, **kwargs):
                 if col in df.columns:
                     df[col] = 'XXXX'  # 마스킹 값 대체
 
-        file_name = f"{TMP_DIR}/{table_name}_{previous_time.strftime('%Y%m%d')}_{time_identifier}.csv"
-        s3_path = f"s3://{S3_BUCKET_NAME}/dw/{schema}/{table_name}/{date_folder}/{table_name}_{previous_time.strftime('%Y%m%d')}_{time_identifier}.csv"
+        file_name = f"{TMP_DIR}/{table_name}_{previous_time.strftime('%Y%m%d')}-{time_identifier}.csv"
+        s3_path = f"s3://{S3_BUCKET_NAME}/dw/{schema}/{table_name}/{date_folder}/{previous_time.strftime('%Y%m%d')}-{time_identifier}.csv"
 
         df.to_csv(file_name, index=False, header=False)
         print(f"Data saved to {file_name}")

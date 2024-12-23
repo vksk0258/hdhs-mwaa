@@ -11,7 +11,6 @@ sql = Variable.get("query")
 
 def oracle_conn_test():
     oracle_hook = OracleHook(oracle_conn_id='conn_oracle_H2O')
-    sql = "SELECT * FROM HDHS_OD.OD_STLM_INF_CRYPT WHERE CHG_DTM BETWEEN TO_DATE('2024-11-20 13:00:00', 'YYYY-MM-DD HH24:MI:SS') AND TO_DATE('2024-11-20 14:00:00', 'YYYY-MM-DD HH24:MI:SS')"
     connection = oracle_hook.get_conn()
     cursor = connection.cursor()
     print(cursor)
