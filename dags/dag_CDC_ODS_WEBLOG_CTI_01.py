@@ -11,6 +11,9 @@ cti_cheongju_dir='s3://hdhs-dw-mwaa-migdata/CTI/CHEONGJU/'
 cti_bak_dir='s3://hdhs-dw-mwaa-migdata/CTI/CTI_bak/'
 TMP_DIR = "/tmp/CTI_Temp"
 
+src_columns =['PROC_TIME','TRED','CALL_ID','MESG','Q_WAIT_TIME','STON','VDN_DIAL_NO','UCID','IN_CALL_NO']
+tgt_columns =['UCID','ACD','PROC_DATE','PROC_TIME','TRED','CALL_ID','MESG','Q_WAIT_TIME','STON','VDN_DIAL_DVCD','VDN_DIAL_NO','IN_CALL_NO','ETL_DTM']
+
 with DAG(
     dag_id="dag_CDC_ODS_WEBLOG_CTI_01",  # DAG의 고유 식별자
     schedule=None,  # DAG의 예약 일정 없음 (수동 실행)
@@ -33,6 +36,7 @@ with DAG(
         else:
             seoul_tmp_key = f"{cti_seoul_dir}seoul_hmall_{work_mmdd}.log"
             os.system(f"aws s3 cp {seoul_s3_key} {seoul_tmp_key}")
+            
 
     logfile_cov()
 
