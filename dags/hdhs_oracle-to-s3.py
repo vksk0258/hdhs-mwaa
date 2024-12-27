@@ -9,7 +9,7 @@ import os
 # 설정 상수
 client_path = Variable.get("client_path")
 S3_BUCKET_NAME = "hdhs-dw-migdata-s3"
-S3_PREFIX = "dw/HDHS_OD/OD_STLM_INF_CRYPT_TEMP/"
+S3_PREFIX = "dw/HDHS_OD/OD_STLM_INF_CRYPT/"
 ORACLE_CONN_ID = "conn_oracle_main"
 TABLE_NAME = "OD_STLM_INF_CRYPT"
 BATCH_SIZE = 1000000  # 한 파일당 저장할 행 수
@@ -26,7 +26,7 @@ def mask_columns(df, table_name):
     if table_name in MASKING_COLUMNS:
         for col in MASKING_COLUMNS[table_name]:
             if col in df.columns:
-                df[col] = 'XXXX'
+                df[col] = 'xxxx'
     return df
 
 with DAG(
@@ -38,7 +38,7 @@ with DAG(
     @task(task_id='oracle_to_s3_upload', retries=10, retry_delay=datetime.timedelta(seconds=10))
     def oracle_to_s3_upload():
         """
-        Oracle 데이터를 BATCH_SIZE 단위로 읽어오고 CSV로 저장 후 S3에 업로드
+        Oracle 데이터를 BATCH_SIZE 단위로 읽어오고 Parquet로 저장 후 S3에 업로드
         """
         # 임시 디렉토리 생성
         os.makedirs(TMP_DIR, exist_ok=True)
@@ -51,7 +51,7 @@ with DAG(
 
         while True:
             # S3에 해당 파일이 있는지 먼저 확인
-            s3_key = f"{S3_PREFIX}LOAD{chunk_index:08d}.csv"
+            s3_key = f"{S3_PREFIX}LOAD{chunk_index:08d}.parquet"
             s3_path = f"s3://{S3_BUCKET_NAME}/{s3_key}"
 
             res = os.system(f"aws s3 ls {s3_path} > /dev/null 2>&1")
@@ -83,10 +83,10 @@ with DAG(
             # 컬럼 마스킹 처리
             df = mask_columns(df, TABLE_NAME)
 
-            file_name = f"{TMP_DIR}/LOAD{chunk_index:08d}.csv"  # 파일 이름 형식
+            file_name = f"{TMP_DIR}/LOAD{chunk_index:08d}.parquet"  # 파일 이름 형식
 
-            # CSV 저장
-            df.to_csv(file_name, index=False, header=False)
+            # Parquet 저장
+            df.to_parquet(file_name,engine='pyarrow', index=False)
             print(f"Chunk {chunk_index} saved to {file_name}")
 
             # S3 업로드
