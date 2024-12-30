@@ -15,7 +15,7 @@ S3_BUCKET_NAME = "hdhs-dw-migdata-s3"
 TMP_DIR = "/tmp/oracle_initial"
 ORACLE_CONN_ID_OCI = "conn_oracle_H2O"
 ORACLE_CONN_ID_MAIN = "conn_oracle_main"
-BATCH_SIZE = 200000
+BATCH_SIZE = 500000
 TABLE_NAME_LIST = [
     "HDHS_CU.CU_ARS_LDIN_MST_CRYPT",
     "HDHS_OD.OD_HPNT_PAY_APRVL_DTL_CRYPT",
@@ -67,7 +67,7 @@ def process_table(table_name):
 
     while True:
         # S3에 해당 파일이 있는지 먼저 확인
-        s3_key = f"{s3_prefix}LOAD{chunk_index:08d}.csv"
+        s3_key = f"{s3_prefix}LOAD{chunk_index:08d}.parquet"
         s3_path = f"s3://{S3_BUCKET_NAME}/{s3_key}"
 
         res = os.system(f"aws s3 ls {s3_path} > /dev/null 2>&1")
@@ -95,10 +95,10 @@ def process_table(table_name):
         # 컬럼 마스킹 처리
         df = mask_columns(df, table)
 
-        file_name = f"{TMP_DIR}/LOAD{chunk_index:08d}.csv"  # 파일 이름 형식
+        file_name = f"{TMP_DIR}/LOAD{chunk_index:08d}.parquet"  # 파일 이름 형식
 
         # CSV 저장
-        df.to_csv(file_name, index=False, header=False)
+        df.to_parquet(file_name,engine='pyarrow', index=False)
         print(f"Chunk {chunk_index} saved to {file_name}")
 
         # S3 업로드
