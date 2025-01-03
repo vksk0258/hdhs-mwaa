@@ -4,7 +4,7 @@ from airflow.operators.python import PythonOperator
 
 def isrt_data():
     query = "INSERT INTO PILOTDB.AIRFLOW.HDHS_TEST (NUM, NAME) VALUES (1, 'Test Name');"
-    snowflake_hook = SnowflakeHook(snowflake_conn_id='snow_itsmart')
+    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
     conn = snowflake_hook.get_conn()
     cursor = conn.cursor()
     cursor.execute(query)

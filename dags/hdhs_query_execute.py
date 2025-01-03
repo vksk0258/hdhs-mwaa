@@ -3,6 +3,7 @@ from airflow.providers.oracle.hooks.oracle import OracleHook
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 import pandas as pd
+import os
 from datetime import datetime
 
 # 환경 변수 설정
@@ -19,16 +20,16 @@ def oracle_conn_main_test(**kwargs):
         thick_mode=True,
         thick_mode_lib_dir=client_path
     )
+    TMP_DIR="/tmp"
+    if not os.path.exists(TMP_DIR):
+        os.makedirs(TMP_DIR)
 
     # Oracle DB 연결 및 쿼리 실행
     with oracle_hook.get_conn() as connection:
-        cursor = connection.cursor()
-        cursor.execute(sql_query)
-        data = cursor.fetchall()
-        column_names = [desc[0] for desc in cursor.description]
-
-        # XCom에 컬럼 이름과 데이터 반환
-        return {"columns": column_names, "data": data}
+        df = pd.read_sql(sql_query, connection)
+        df.to_csv("/tmp/tmp.csv", index=True, header=True)
+        print(df)
+        os.system(f"aws s3 cp /tmp/tmp.csv s3://hdhs-dw-mwaa-s3/tmp/tmp.csv")
 
 
 # DAG 정의
