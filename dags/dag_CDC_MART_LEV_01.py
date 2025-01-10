@@ -20,6 +20,8 @@ def log_result_to_snowflake(procedure_name, start_time, end_time, result, p_star
     Logs the result of a procedure execution to Snowflake table.
     """
     snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
+    # Ensure result is not None
+    result = result or "No result returned"
     status = 'OK' if 'SQL compilation error' not in result else 'ER'
     message = result.replace("'", "''")
     jb_pmt = f'[{p_start}]-[{p_end}]'
@@ -53,15 +55,17 @@ def execute_procedure(procedure_name, p_start, p_end):
                 print(query)
                 cur.execute(query)
                 result = cur.fetchall()
-                result_message = result[0][0] if result else "Unknown result"
+                # Handle empty result properly
+                result_message = result[0][0] if result and result[0] else "No result returned"
                 print(f"Procedure result: {result_message}")
     except Exception as e:
         result_message = str(e)
-        print(f"message : {result_message}")
+        print(f"Error message: {result_message}")
     end_time = pendulum.now("Asia/Seoul")
 
     # Log the result to Snowflake
     log_result_to_snowflake(procedure_name, start_time, end_time, result_message, p_start, p_end)
+
 
 def log_etl_completion(**kwargs):
     complete_time = kwargs['execution_date'].in_tz(pendulum.timezone("Asia/Seoul")).strftime('%Y-%m-%d %H:%M:%S')
