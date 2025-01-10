@@ -8,24 +8,60 @@ import json
 # S3 parameters
 s3 = boto3.client('s3')
 bucket_name = "hdhs-dw-mwaa-s3"
-key = "param/wf_DD01_0400_CMS_01.json"
+key = "param/wf_DD01_0030_DAILY_MAIN_01.json"
 response = s3.get_object(Bucket=bucket_name, Key=key)
 params = json.load(response['Body'])
 
 p_start = params.get("$$P_START")
 p_end = params.get("$$P_END")
 
-# Define the task function
-def execute_procedure(procedure_name, p_start, p_end):
+def log_result_to_snowflake(procedure_name, start_time, end_time, result, p_start, p_end):
+    """
+    Logs the result of a procedure execution to Snowflake table.
+    """
     snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
+    status = 'OK' if 'SQL compilation error' not in result else 'ER'
+    message = result.replace("'", "''")
+    jb_pmt = f'[{p_start}]-[{p_end}]'
+
+    query = f"""
+    INSERT INTO DW_ETL_DB.CONFIG.JOB_RESULT (
+        PGMID, STARTTIME, ENDTIME, ST, JBPMT, MSG
+    )
+    VALUES (
+        '{procedure_name}', '{start_time}', '{end_time}', '{status}', '{jb_pmt}', '{message}'
+    )
+    """
+    print(query)
 
     with snowflake_hook.get_conn() as conn:
         with conn.cursor() as cur:
-            query = f"CALL ETL_SERVICE.{procedure_name}('{p_start}', '{p_end}')"
-            print(query)
             cur.execute(query)
-            result = cur.fetchall()
-            print(f"Procedure result: {result[0]}")
+
+
+def execute_procedure(procedure_name, p_start, p_end):
+    """
+    Executes a stored procedure in Snowflake and logs the result.
+    """
+    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
+    start_time = pendulum.now("Asia/Seoul")
+
+    try:
+        with snowflake_hook.get_conn() as conn:
+            with conn.cursor() as cur:
+                query = f"CALL ETL_SERVICE.{procedure_name}('{p_start}', '{p_end}')"
+                print(query)
+                cur.execute(query)
+                result = cur.fetchall()
+                result_message = result[0][0] if result else "Unknown result"
+                print(f"Procedure result: {result_message}")
+    except Exception as e:
+        result_message = str(e)
+        print(f"message : {result_message}")
+    end_time = pendulum.now("Asia/Seoul")
+
+    # Log the result to Snowflake
+    log_result_to_snowflake(procedure_name, start_time, end_time, result_message, p_start, p_end)
 
 def log_etl_completion(**kwargs):
     complete_time = kwargs['execution_date'].in_tz(pendulum.timezone("Asia/Seoul")).strftime('%Y-%m-%d %H:%M:%S')

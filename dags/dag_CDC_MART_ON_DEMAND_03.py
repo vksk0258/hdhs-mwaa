@@ -8,20 +8,20 @@ import json
 # S3 parameters
 s3 = boto3.client('s3')
 bucket_name = "hdhs-dw-mwaa-s3"
-key = "param/wf_DD01_0400_CMS_01.json"
+key = "param/wf_DD01_0030_DAILY_MAIN_01.json"
 response = s3.get_object(Bucket=bucket_name, Key=key)
 params = json.load(response['Body'])
 
 p_start = params.get("$$P_START")
 p_end = params.get("$$P_END")
 
-def log_result_to_snowflake(procedure_name, start_time, result, p_start, p_end):
+def log_result_to_snowflake(procedure_name, start_time, end_time, result, p_start, p_end):
     """
     Logs the result of a procedure execution to Snowflake table.
     """
     snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
     status = 'OK' if 'SQL compilation error' not in result else 'ER'
-    message = result
+    message = result.replace("'", "''")
     jb_pmt = f'[{p_start}]-[{p_end}]'
 
     query = f"""
@@ -29,21 +29,22 @@ def log_result_to_snowflake(procedure_name, start_time, result, p_start, p_end):
         PGMID, STARTTIME, ENDTIME, ST, JBPMT, MSG
     )
     VALUES (
-        '{procedure_name}', '{start_time}', CURRENT_TIMESTAMP, '{status}', '{jb_pmt}', '{message}'
+        '{procedure_name}', '{start_time}', '{end_time}', '{status}', '{jb_pmt}', '{message}'
     )
     """
+    print(query)
 
     with snowflake_hook.get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(query)
 
 
-def execute_procedure(procedure_name, p_start, p_end, **kwargs):
+def execute_procedure(procedure_name, p_start, p_end):
     """
     Executes a stored procedure in Snowflake and logs the result.
     """
     snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
-    start_time = pendulum.now().to_iso8601_string()
+    start_time = pendulum.now("Asia/Seoul")
 
     try:
         with snowflake_hook.get_conn() as conn:
@@ -56,15 +57,16 @@ def execute_procedure(procedure_name, p_start, p_end, **kwargs):
                 print(f"Procedure result: {result_message}")
     except Exception as e:
         result_message = str(e)
+        print(f"message : {result_message}")
+    end_time = pendulum.now("Asia/Seoul")
 
     # Log the result to Snowflake
-    log_result_to_snowflake(procedure_name, start_time, result_message, p_start, p_end)
+    log_result_to_snowflake(procedure_name, start_time, end_time, result_message, p_start, p_end)
 
 
 with DAG(
     dag_id="dag_CDC_MART_ON_DEMAND_03",
     schedule_interval=None,
-    start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,
     tags=["현대홈쇼핑", "MART프로시져"]
 ) as dag:
