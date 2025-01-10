@@ -10,6 +10,9 @@ from datetime import datetime
 client_path = Variable.get("client_path")
 sql_query = Variable.get("query")
 
+TMP_DIR = "/tmp/ods"
+S3_BUCKET_NAME = "hdhs-dw-mwaa-migdata"
+
 
 def oracle_conn_main_test(**kwargs):
     """

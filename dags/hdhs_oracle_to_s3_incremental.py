@@ -23,14 +23,6 @@ TABLE_NAME_LIST = [
     "HDHS_ECS.TEC_CONT_CORP_CRYPT"
 ]
 
-# 테이블별 마스킹할 컬럼 정의
-MASKING_COLUMNS = {
-    "CU_ARS_LDIN_MST_CRYPT": ["TELI", "TEL", "CUST_NM", "ECRYPT_CRD_NO", "CRD_VLID_TERM_YM"],
-    "TEC_CONT_CORP_CRYPT": ["ADDR", "VEN_TEL", "EMAIL", "CUST_PERS1_HP", "CUST_PERS2_NAME", "CUST_PERS2_TEL", "CUST_PERS2_HP", "CUST_PERS2_ID"],
-    "OD_CRD_APRVL_LOG_CRYPT": ["ECRYPT_CRD_NO", "VLID_TERM_YM"],
-    "OD_HPNT_PAY_APRVL_DTL_CRYPT": ["MALL_ID"],
-    "OD_STLM_INF_CRYPT": ["OWN_CUST_NM", "CRD_VLID_TERM_YM"]
-}
 
 def incremental_load(table, **kwargs):
     """증분 데이터 추출 및 S3 업로드"""
@@ -48,21 +40,21 @@ def incremental_load(table, **kwargs):
     # 시간 포맷 지정
     current_time_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
     previous_time_str = previous_time.strftime('%Y-%m-%d %H:%M:%S')
-    date_folder = previous_time.strftime('%Y/%m/%d')
-    time_identifier = previous_time.strftime('%H%M%S')
+    date_folder = current_time.strftime('%Y/%m/%d')
+    time_identifier = current_time.strftime('%H%M%S')
 
     schema, table_name = table.split('.')
     print(f"Processing table: {table} from {previous_time_str} to {current_time_str}")
 
     if table_name != "TEC_CONT_CORP_CRYPT":
         query = f"""
-            SELECT 'I' AS OPERATION_FLAG, t.*, t.CHG_DTM AS LAST_CHG_DTM
+            SELECT 'I' AS Op, t.*, t.CHG_DTM AS transact_id
             FROM {table} t
             WHERE t.REG_DTM = t.CHG_DTM
             AND CHG_DTM >= TO_DATE('{previous_time_str}', 'YYYY-MM-DD HH24:MI:SS')
             AND CHG_DTM < TO_DATE('{current_time_str}', 'YYYY-MM-DD HH24:MI:SS')
             UNION ALL
-            SELECT 'U' AS OPERATION_FLAG, t.*, t.CHG_DTM AS LAST_CHG_DTM
+            SELECT 'U' AS Op, t.*, t.CHG_DTM AS transact_id
             FROM {table} t
             WHERE t.REG_DTM <> t.CHG_DTM
             AND CHG_DTM >= TO_DATE('{previous_time_str}', 'YYYY-MM-DD HH24:MI:SS')
@@ -70,13 +62,13 @@ def incremental_load(table, **kwargs):
         """
     else:
         query = f"""
-            SELECT 'I' AS OPERATION_FLAG, t.*, t.MODIFY_DATE AS LAST_CHG_DTM
+            SELECT 'I' AS Op, t.*, t.MODIFY_DATE AS transact_id
             FROM {table} t
             WHERE t.INSERT_DATE = t.MODIFY_DATE
             AND MODIFY_DATE >= TO_DATE('{previous_time_str}', 'YYYY-MM-DD HH24:MI:SS')
             AND MODIFY_DATE < TO_DATE('{current_time_str}', 'YYYY-MM-DD HH24:MI:SS')
             UNION ALL
-            SELECT 'U' AS OPERATION_FLAG, t.*, t.MODIFY_DATE AS LAST_CHG_DTM
+            SELECT 'U' AS Op, t.*, t.MODIFY_DATE AS transact_id
             FROM {table} t
             WHERE t.INSERT_DATE <> t.MODIFY_DATE
             AND MODIFY_DATE >= TO_DATE('{previous_time_str}', 'YYYY-MM-DD HH24:MI:SS')
@@ -86,15 +78,9 @@ def incremental_load(table, **kwargs):
     df = pd.read_sql(query, conn)
 
     if not df.empty:
-        # 특정 테이블의 컬럼 마스킹 처리
-        if table_name in MASKING_COLUMNS:
-            masking_columns = MASKING_COLUMNS[table_name]
-            for col in masking_columns:
-                if col in df.columns:
-                    df[col] = 'XXXX'  # 마스킹 값 대체
 
-        file_name = f"{TMP_DIR}/{table_name}_{previous_time.strftime('%Y%m%d')}_{time_identifier}.parquet"
-        s3_path = f"s3://{S3_BUCKET_NAME}/dw/{schema}/{table_name}/{date_folder}/{previous_time.strftime('%Y%m%d')}-{time_identifier}.parquet"
+        file_name = f"{TMP_DIR}/{table_name}_{current_time.strftime('%Y%m%d')}-{time_identifier}.parquet"
+        s3_path = f"s3://{S3_BUCKET_NAME}/dw/{schema}/{table_name}/{date_folder}/{current_time.strftime('%Y%m%d')}-{time_identifier}.parquet"
 
         df.to_parquet(file_name, engine='pyarrow', index=False)
         print(f"Data saved to {file_name}")
