@@ -60,7 +60,7 @@ def execute_procedure(procedure_name, p_start, p_end):
                 print(f"Procedure result: {result_message}")
     except Exception as e:
         result_message = str(e)
-        print(f"Error message: {result_message}")
+        print(f"Procedure execute SQL compilation error: {result_message}")
     end_time = pendulum.now("Asia/Seoul")
 
     # Log the result to Snowflake
