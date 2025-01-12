@@ -15,6 +15,7 @@ params = json.load(response['Body'])
 p_start = params.get("$$P_START")
 p_end = params.get("$$P_END")
 
+
 def log_result_to_snowflake(procedure_name, start_time, end_time, result, p_start, p_end):
     """
     Logs the result of a procedure execution to Snowflake table.
@@ -22,7 +23,13 @@ def log_result_to_snowflake(procedure_name, start_time, end_time, result, p_star
     snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
     # Ensure result is not None
     result = result or "No result returned"
-    status = 'OK' if 'SQL compilation error' not in result else 'ER'
+
+    # Check for errors in result
+    if 'SQL compilation error' in result or 'Procedure execute error' in result:
+        status = 'ER'
+    else:
+        status = 'OK'
+
     message = result.replace("'", "''")
     jb_pmt = f'[{p_start}]-[{p_end}]'
 
@@ -60,7 +67,7 @@ def execute_procedure(procedure_name, p_start, p_end):
                 print(f"Procedure result: {result_message}")
     except Exception as e:
         result_message = str(e)
-        print(f"Procedure execute SQL compilation error: {result_message}")
+        print(f"Procedure execute error message: {result_message}")
     end_time = pendulum.now("Asia/Seoul")
 
     # Log the result to Snowflake
