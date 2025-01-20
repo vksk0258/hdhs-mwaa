@@ -2,6 +2,7 @@ from airflow import DAG
 from airflow.decorators import task
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+import pendulum
 import datetime
 import pandas as pd
 import boto3
@@ -12,6 +13,8 @@ import os
 MD_VEN_INTL_SETUP_DTL_COLUMNS = ["ALML_CD", "MD_CD", "VEN_CD", "VEN2_CD", "INTL_YN", "CHG_YN", "RGST_ID", "RGST_IP", "REG_DTM", "CHGP_ID", "CHGP_IP", "CHG_DTM"]
 ITEM_INTL_DTL_COLUMNS = ["ALML_CD", "SLITM_CD", "ALML_ITEM_CD", "ALML_CO_GBCD", "ALML_INTL_NO", "SOON_USE_PRMO_NO", "SOON_USE_PRMO_PRC", "ADD_DC_PRMO_NO", "ADD_DC_PRMO_PRC", "SELL_PRC", "ALML_SELL_GBCD", "SELL_GBCD", "ITNT_DISP_YN", "ITEM_PRC_APLY_DTM", "VEN_CD", "VEN2_CD", "OSHP_VEN_ADR_SEQ", "RTP_EXCH_VEN_ADR_SEQ", "SDLVC_VEN_SEQ", "DLVC_PAY_GBCD", "BNDL_DLVC_GBCD", "NCHG_DLV_BSIC_AMT", "DLVC_BSIC_QTY", "DLV_COST", "RTP_DLV_COST", "EXCH_DLV_COST", "SEND_DTM", "ALML_INTL_RST_GBCD", "ALML_ERR_CD", "ALML_ERR_MSG", "ORGL_ALML_ITEM_CD", "ALML_APRVL_STAT_CD", "ALML_PRC_APRVL_STAT_CD", "RJT_PTC_RSN", "RPROC_YN", "RGST_ID", "RGST_IP", "REG_DTM", "CHGP_ID", "CHGP_IP", "CHG_DTM"]
 INTL_EXCP_SETUP_DTL_COLUMNS = ["ALML_CD", "MD_CD", "VEN_CD", "VEN2_CD", "ITEM_INTL_GBCD", "ITEM_INTL_PTC_CD", "RMRK", "INTL_YN", "CHG_YN", "RGST_ID", "RGST_IP", "REG_DTM", "CHGP_ID", "CHGP_IP", "CHG_DTM"]
+
+KST = pendulum.timezone("Asia/Seoul")
 
 # Constants
 S3_BUCKET_NAME = "hdhs-dw-migdata-s3"
@@ -36,8 +39,6 @@ p_end = f"{params.get('$$P_END')}235959"
 fm_p_start = datetime.datetime.strptime(p_start, "%Y%m%d%H%M%S")
 fm_p_end = datetime.datetime.strptime(p_end, "%Y%m%d%H%M%S")
 
-date_folder = fm_p_start.strftime('%Y/%m/%d')
-time_identifier = fm_p_end.strftime('%H%M%S')
 
 postgres_hook = PostgresHook(postgres_conn_id='conn_postgres_hdhs_reading')
 snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
@@ -45,7 +46,13 @@ snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
 BATCH_SIZE = 500000
 
 
-def process_in_batches(table, query, schema, table_name):
+def process_in_batches(table, query, schema, table_name, **kwargs):
+
+    current_time = kwargs['data_interval_end'].in_tz(KST)
+    date_folder = current_time.strftime('%Y/%m/%d')
+
+    time_identifier = fm_p_end.strftime('%H%M%S')
+
     if not os.path.exists(TMP_DIR):
         os.makedirs(TMP_DIR)
 
@@ -82,10 +89,16 @@ with DAG(
     dag_id="dag_CDC_ODS_SUB_ALLI_01_S3",
     schedule_interval=None,
     catchup=False,
-    tags=["현대홈쇼핑"]
+    tags=["현대홈쇼핑","DD01_0010_DAILY_MAIN"]
 ) as dag:
     @task(task_id='task_AM_ALML_MD_VEN_INTL_SETUP_DTL_I')
-    def task_AM_ALML_MD_VEN_INTL_SETUP_DTL(table):
+    def task_AM_ALML_MD_VEN_INTL_SETUP_DTL(table,**kwargs):
+
+        current_time = kwargs['data_interval_end'].in_tz(KST)
+        date_folder = current_time.strftime('%Y/%m/%d')
+
+        time_identifier = fm_p_end.strftime('%H%M%S')
+
         if not os.path.exists(TMP_DIR):
             os.makedirs(TMP_DIR)
 
@@ -116,7 +129,7 @@ with DAG(
             print(f"Error processing table {table}: {e}")
 
     @task(task_id='task_AM_ALML_INTL_EXCP_SETUP_DTL')
-    def task_AM_ALML_INTL_EXCP_SETUP_DTL(table):
+    def task_AM_ALML_INTL_EXCP_SETUP_DTL(table,**kwargs):
         schema, table_name = table.split('.')
         query = f"""
                     SELECT 'I' AS Op, 
@@ -136,10 +149,10 @@ with DAG(
                       AND t.CHG_DTM < TO_TIMESTAMP('{fm_p_end}', 'YYYY-MM-DD HH24:MI:SS')
                 """
         print(query)
-        process_in_batches(table, query, schema, table_name)
+        process_in_batches(table, query, schema, table_name,**kwargs)
 
     @task(task_id='task_AM_ALML_ITEM_INTL_DTL')
-    def task_AM_ALML_ITEM_INTL_DTL(table):
+    def task_AM_ALML_ITEM_INTL_DTL(table, **kwargs):
         schema, table_name = table.split('.')
         query = f"""
                     SELECT 'I' AS Op, 
@@ -158,7 +171,7 @@ with DAG(
                       AND t.CHG_DTM >= TO_TIMESTAMP('{fm_p_start}', 'YYYY-MM-DD HH24:MI:SS')
                       AND t.CHG_DTM < TO_TIMESTAMP('{fm_p_end}', 'YYYY-MM-DD HH24:MI:SS')
                 """
-        process_in_batches(table, query, schema, table_name)
+        process_in_batches(table, query, schema, table_name, **kwargs)
 
     # Task execution
     task_AM_ALML_MD_VEN_INTL_SETUP_DTL(TABLE_NAME_LIST[0]) >> task_AM_ALML_INTL_EXCP_SETUP_DTL(TABLE_NAME_LIST[1]) >> task_AM_ALML_ITEM_INTL_DTL(TABLE_NAME_LIST[2])

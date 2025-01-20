@@ -53,7 +53,7 @@ def create_and_upload_json(**kwargs):
 
 
 with DAG(
-        dag_id='dag_DD01_0030_DAILY_MAIN_02',
+        dag_id='dag_DD01_0010_DAILY_MAIN_02',
         description='Extract Snowflake data and upload to S3 as JSON',
         schedule_interval=None  # 필요에 따라 스케줄 설정
 ) as dag:

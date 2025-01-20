@@ -2,13 +2,13 @@ from airflow import DAG
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 with DAG(
-    dag_id="dag_DD01_0030",
+    dag_id="dag_DD01_0010",
     schedule_interval=None,
     tags=["현대홈쇼핑"]
 ) as dag:
-    trigger_dag_DD01_0030_DAILY_MAIN_01 = TriggerDagRunOperator(
-        task_id='trigger_dag_DD01_0030_DAILY_MAIN_01',
-        trigger_dag_id='dag_DD01_0030_DAILY_MAIN_01',
+    trigger_dag_DD01_0010_DAILY_MAIN_01 = TriggerDagRunOperator(
+        task_id='trigger_dag_DD01_0010_DAILY_MAIN_01',
+        trigger_dag_id='dag_DD01_0010_DAILY_MAIN_01',
         trigger_run_id=None,
         reset_dag_run=True,
         wait_for_completion=False,
@@ -18,9 +18,9 @@ with DAG(
         trigger_rule="all_done"
     )
 
-    trigger_dag_DD01_0030_MONTHLY_01 = TriggerDagRunOperator(
-        task_id='trigger_dag_DD01_0030_MONTHLY_01',
-        trigger_dag_id='dag_DD01_0030_MONTHLY_01',
+    trigger_dag_DD01_0010_MONTHLY_01 = TriggerDagRunOperator(
+        task_id='trigger_dag_DD01_0010_MONTHLY_01',
+        trigger_dag_id='dag_DD01_0010_MONTHLY_01',
         trigger_run_id=None,
         reset_dag_run=True,
         wait_for_completion=False,
@@ -30,4 +30,4 @@ with DAG(
         trigger_rule="all_done"
     )
 
-    trigger_dag_DD01_0030_DAILY_MAIN_01 >> trigger_dag_DD01_0030_MONTHLY_01
+    trigger_dag_DD01_0010_DAILY_MAIN_01 >> trigger_dag_DD01_0010_MONTHLY_01

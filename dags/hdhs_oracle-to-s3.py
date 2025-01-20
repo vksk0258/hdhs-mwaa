@@ -9,7 +9,7 @@ import os
 # 설정 상수
 client_path = Variable.get("client_path")
 S3_BUCKET_NAME = "hdhs-dw-migdata-s3"
-S3_PREFIX = "dw/HDHS_OD/OD_STLM_INF_CRYPT/"
+S3_PREFIX = "dw/HDHS_OD/OD_STLM_INF_CRYPT_TEMP/"
 ORACLE_CONN_ID = "conn_oracle_main"
 TABLE_NAME = "OD_STLM_INF_CRYPT"
 BATCH_SIZE = 1000000  # 한 파일당 저장할 행 수
@@ -81,7 +81,20 @@ with DAG(
             print("df empty pass")
 
             # 컬럼 마스킹 처리
-            df = mask_columns(df, TABLE_NAME)
+
+            for col in df.select_dtypes(include=['datetime', 'datetimetz']).columns:
+                df[col] = df[col].apply(lambda x: str(x) if pd.notnull(x) else None)
+
+            target_columns = ['APRVL_DTM', 'CHG_DTM', 'CNCL_DTM', 'LAST_APRVL_DTM', 'REG_DTM', 'STLM_DTM',
+                              'STLM_PRRG_DTM']
+
+            # 조건 적용
+            for col in target_columns:
+                if col in df.columns:  # 데이터프레임에 해당 컬럼이 있는지 확인
+                    df[col] = df[col].apply(
+                        lambda x: None if pd.isnull(x) or x == pd.NaT or str(x).strip() in ['NaT', '']
+                        else x.isoformat() if isinstance(x, pd.Timestamp) else str(x)
+                    )
 
             file_name = f"{TMP_DIR}/LOAD{chunk_index:08d}.parquet"  # 파일 이름 형식
 

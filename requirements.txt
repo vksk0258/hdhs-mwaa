@@ -5,5 +5,8 @@ apache-airflow-providers-oracle
 apache-airflow-providers-snowflake
 apache-airflow-providers-jdbc
 apache-airflow-providers-odbc
+apache-airflow-providers-microsoft-mssql
 boto3
 pandas
+chardet
+charset_normalizer

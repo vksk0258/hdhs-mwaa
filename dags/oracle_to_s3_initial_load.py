@@ -95,6 +95,12 @@ def process_table(table_name):
         # 컬럼 마스킹 처리
         df = mask_columns(df, table)
 
+        for col in df.select_dtypes(include=['datetime', 'datetimetz']).columns:
+            df[col] = df[col].apply(
+                lambda x: None if pd.isnull(x) or x == pd.NaT or str(x).strip() in ['NaT', '']
+                else x.isoformat() if isinstance(x, pd.Timestamp) else str(x)
+            )
+
         file_name = f"{TMP_DIR}/LOAD{chunk_index:08d}.parquet"  # 파일 이름 형식
 
         # CSV 저장

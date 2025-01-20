@@ -64,6 +64,12 @@ def process_table(table_name, batch_size, tmp_dir, s3_bucket_name,**kwargs):
             print("No more data to process for this table.")
             break
 
+        for col in df.select_dtypes(include=['datetime', 'datetimetz']).columns:
+            df[col] = df[col].apply(
+                lambda x: None if pd.isnull(x) or x == pd.NaT or str(x).strip() in ['NaT', '']
+                else x.isoformat() if isinstance(x, pd.Timestamp) else str(x)
+            )
+
         file_name = f"{tmp_dir}/LOAD{chunk_index:08d}.parquet"
         df.to_parquet(file_name, engine='pyarrow', index=False)
         os.system(f"aws s3 cp {file_name} s3://{s3_bucket_name}/{s3_key}")
@@ -76,7 +82,8 @@ def process_table(table_name, batch_size, tmp_dir, s3_bucket_name,**kwargs):
 # DAG 정의
 with DAG(
         dag_id="oracle_to_s3_initial_load_ODS_TMS",
-        schedule_interval=None,  # 수동 실행
+        schedule_interval='10 0 * * *',
+        start_date=pendulum.datetime(2025, 1, 15, tz="Asia/Seoul"),
         catchup=False,
         dagrun_timeout=datetime.timedelta(minutes=2400),
         tags=["현대홈쇼핑", "초기적재"]

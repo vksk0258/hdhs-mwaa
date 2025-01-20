@@ -23,7 +23,6 @@ TABLE_NAME_LIST = [
     "HDHS_ECS.TEC_CONT_CORP_CRYPT"
 ]
 
-
 def incremental_load(table, **kwargs):
     """증분 데이터 추출 및 S3 업로드"""
     if not os.path.exists(TMP_DIR):
@@ -78,6 +77,12 @@ def incremental_load(table, **kwargs):
     df = pd.read_sql(query, conn)
 
     if not df.empty:
+        # date 타입 컬럼을 문자열로 변환
+        for col in df.select_dtypes(include=['datetime', 'datetimetz']).columns:
+            df[col] = df[col].apply(
+                lambda x: None if pd.isnull(x) or x == pd.NaT or str(x).strip() in ['NaT', '']
+                else x.isoformat() if isinstance(x, pd.Timestamp) else str(x)
+            )
 
         file_name = f"{TMP_DIR}/{table_name}_{current_time.strftime('%Y%m%d')}-{time_identifier}.parquet"
         s3_path = f"s3://{S3_BUCKET_NAME}/dw/{schema}/{table_name}/{date_folder}/{current_time.strftime('%Y%m%d')}-{time_identifier}.parquet"
@@ -96,7 +101,6 @@ def incremental_load(table, **kwargs):
     cursor.close()
     conn.close()
 
-
 dag = DAG(
     dag_id='hdhs_oracle_to_s3_incremental_serial_tasks',
     description='Incremental load for multiple Oracle tables to S3 in sequence every hour (KST)',
@@ -106,7 +110,6 @@ dag = DAG(
 )
 
 # 각 테이블에 대한 태스크를 직렬로 실행하도록 설정
-previous_task = None
 for table in TABLE_NAME_LIST:
     schema, table_name = table.split('.')
     task_id = f"incremental_load_{schema.lower()}_{table_name.lower()}"
@@ -121,8 +124,3 @@ for table in TABLE_NAME_LIST:
         retries=10,
         retry_delay=datetime.timedelta(seconds=10)
     )
-
-    # 직렬 실행을 위해 의존성 설정
-    if previous_task:
-        previous_task >> current_task
-    previous_task = current_task

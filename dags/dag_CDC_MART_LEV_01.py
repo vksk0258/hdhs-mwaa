@@ -34,7 +34,7 @@ def log_result_to_snowflake(procedure_name, start_time, end_time, result, p_star
     jb_pmt = f'[{p_start}]-[{p_end}]'
 
     query = f"""
-    INSERT INTO DW_ETL_DB.CONFIG.JOB_RESULT (
+    INSERT INTO DW_ETL_DB.DW_ETC.JOB_RESULT_MWAA (
         PGMID, STARTTIME, ENDTIME, ST, JBPMT, MSG
     )
     VALUES (

@@ -150,8 +150,9 @@ def create_and_upload_json(**kwargs):
 
 # DAG 정의
 with DAG(
-        dag_id="dag_DD01_0030_DAILY_MAIN_01",
-        schedule_interval=None,
+        dag_id="dag_DD01_0010_DAILY_MAIN_01",
+        schedule_interval='0 2 * * *',
+        start_date=pendulum.datetime(2025, 1, 18, tz="Asia/Seoul"),
         catchup=False,
         tags=["현대홈쇼핑", "Daily"]
 ) as dag:
@@ -202,9 +203,33 @@ with DAG(
         python_callable=create_and_upload_json
     )
 
-    trigger_dag_CDC_MART_01 = TriggerDagRunOperator(
-        task_id='trigger_dag_CDC_MART_01',
-        trigger_dag_id='dag_CDC_MART_01',
+    # trigger_dag_CDC_MART_01 = TriggerDagRunOperator(
+    #     task_id='trigger_dag_CDC_MART_01',
+    #     trigger_dag_id='dag_CDC_MART_01',
+    #     trigger_run_id=None,
+    #     reset_dag_run=True,
+    #     wait_for_completion=False,
+    #     poke_interval=60,
+    #     allowed_states=['success'],
+    #     failed_states=None,
+    #     trigger_rule="all_done"
+    # )
+
+    trigger_dag_CDC_ODS_SUB_ALLI_01_S3 = TriggerDagRunOperator(
+        task_id='trigger_dag_CDC_ODS_SUB_ALLI_01_S3',
+        trigger_dag_id='dag_CDC_ODS_SUB_ALLI_01_S3',
+        trigger_run_id=None,
+        reset_dag_run=True,
+        wait_for_completion=False,
+        poke_interval=60,
+        allowed_states=['success'],
+        failed_states=None,
+        trigger_rule="all_done"
+    )
+
+    trigger_dag_CDC_ODS_SUB_CMS_01 = TriggerDagRunOperator(
+        task_id='trigger_dag_CDC_ODS_SUB_CMS_01',
+        trigger_dag_id='dag_CDC_ODS_SUB_CMS_01',
         trigger_run_id=None,
         reset_dag_run=True,
         wait_for_completion=False,
@@ -215,4 +240,5 @@ with DAG(
     )
 
 
-    task_ETL_SCHEDULE_c_01() >> task_create_and_upload_json >> trigger_dag_CDC_MART_01
+
+    task_ETL_SCHEDULE_c_01() >> task_create_and_upload_json >> trigger_dag_CDC_ODS_SUB_ALLI_01_S3 >> trigger_dag_CDC_ODS_SUB_CMS_01
