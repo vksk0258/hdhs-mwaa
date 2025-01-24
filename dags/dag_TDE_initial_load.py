@@ -39,6 +39,7 @@ with DAG(
         conn_id = "conn_oracle_OCI",
         table = "HDHS_OD.OD_CRD_APRVL_LOG_CRYPT",
         columns = ["*"],
+        batch_size=1000000,
         retries = 10,
         retry_delay=datetime.timedelta(seconds=10)
     )
@@ -48,6 +49,7 @@ with DAG(
         conn_id = "conn_oracle_OCI",
         table = "HDHS_ECS.TEC_CONT_CORP_CRYPT",
         columns = ["*"],
+        batch_size=1000000,
         retries = 10,
         retry_delay=datetime.timedelta(seconds=10)
     )
@@ -57,6 +59,7 @@ with DAG(
         conn_id = "conn_oracle_main",
         table = "HDHS_OD.OD_STLM_INF_CRYPT",
         columns = ["*"],
+        batch_size=1000000,
         retries = 10,
         retry_delay=datetime.timedelta(seconds=10)
     )

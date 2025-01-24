@@ -18,7 +18,7 @@ def jdbc_conn_test():
     cursor = connection.cursor()
     cursor.execute(query)
     data = cursor.fetchall()
-    print(cursor)
+    print(data)
     cursor.close()
     connection.close()
     return data

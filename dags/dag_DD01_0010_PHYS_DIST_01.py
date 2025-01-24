@@ -1,10 +1,6 @@
 from airflow import DAG
-from airflow.decorators import task
-from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
-import pandas as pd
-import boto3
-import json
+
 
 
 with DAG(

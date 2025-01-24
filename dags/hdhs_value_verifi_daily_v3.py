@@ -10,18 +10,20 @@ import pandas as pd  # 데이터프레임 작업을 위한 pandas
 # Oracle Client 라이브러리 경로를 변수에서 가져옴
 client_path = Variable.get("client_path")
 
-# 테이블 목록 정의 (Oracle과 Snowflake에서 비교할 대상 테이블들)
+# 테이블 목록 정의 (Oracle에서 비교할 대상 테이블들)
 table_list = {
     "HDHS_OD.OD_ORD_DTL": ["ORD_NO", "ORD_PTC_SEQ", "CHG_DTM"],
     "HDHS_OD.OD_BASKT_INF": ["CUST_NO", "BASKT_SEQ", "CHG_DTM"],
-    "HDHS_CU.CU_ONLN_ACSS_LOG": ["CUST_NO", "ACSS_DTM", "CHG_DTM"]
+    "HDHS_PD.IM_SLITM_PRC_DTL": ["ITEM_NO", "PRC_SEQ", "CHG_DTM"]
 }
+
+# Snowflake 테이블 접미사 정의
+snowflake_suffixes = ["_352_BIN", "_353_BIN", "_354_BIN", "_352_LOG", "_353_LOG", "_354_LOG"]
 
 # DAG 정의
 with DAG(
     dag_id="hdhs_value_verifi_daily_v3",  # DAG의 고유 식별자
-    start_date=pendulum.datetime(2024, 1, 5, tz="Asia/Seoul"),
-    schedule_interval="0 * * * *",
+    schedule_interval=None,
     catchup=False,  # 과거 데이터 실행을 스킵
     dagrun_timeout=datetime.timedelta(minutes=60),  # DAG 실행 제한 시간
     tags=["현대홈쇼핑", "검증"]  # DAG에 붙일 태그
@@ -29,9 +31,9 @@ with DAG(
 
     # Oracle 데이터 조회 및 XCom으로 데이터 전달
     @task(task_id='oracle_value_push_xcom', retries=10, retry_delay=datetime.timedelta(seconds=10))
-    def ora_push(table_list, **kwargs):
+    def ora_push(table_list, snowflake_suffixes, **kwargs):
         """
-        Oracle 데이터베이스에서 각 테이블의 레코드 수와 (특정 테이블의 경우) 데이터를 Snowflake로 전달.
+        Oracle 데이터베이스에서 각 테이블의 레코드 수와 데이터를 Snowflake로 전달하며 비교.
         """
         ti = kwargs['ti']  # Task Instance (XCom 푸시를 위해 필요)
 
@@ -73,30 +75,42 @@ with DAG(
 
             # Oracle에서 데이터 조회
             ora_df = pd.read_sql(ora_query, con=oracle_connection)
-            snow_df = pd.read_sql(ora_query, con=snowflake_connection)
+            batch_size = 50000
+            for batch_df in split_dataframe(ora_df, batch_size):
+                batch_df.to_sql("AM_ALML_MD_VEN_INTL_SETUP_DTL", con=engine, schema="ODS_ALLI", if_exists='append',
+                                index=False)
+                print("적재완료")
 
-            # 데이터 비교
-            diff_df = ora_df.merge(snow_df, how='outer', on=columns, indicator=True)
+            # Snowflake 테이블 접미사 순회하며 데이터 비교
+            for suffix in snowflake_suffixes:
+                snowflake_table = f"{table_name}{suffix}"
+                snow_query = ora_query.replace(table, f"{schema}.{snowflake_table}")
+                print(f"Query for Snowflake table {snowflake_table}:{snow_query}\n")
 
-            only_in_ora_df = diff_df[diff_df['_merge'] == 'left_only']
-            only_in_snow_df = diff_df[diff_df['_merge'] == 'right_only']
+                snow_df = pd.read_sql(snow_query, con=snowflake_connection)
 
-            # Snowflake에 데이터 적재
-            for _, row in only_in_ora_df.iterrows():
-                snowflake_engine.execute(f"""
-                    INSERT INTO DW_LOAD_DB.CONFIG.TB_DATA_VERIFY_DTL
-                    (DATABASE_NAME, SCHEMA_NAME, TABLE_NAME, KEYS, CHG_DTM, ORA_YN)
-                    VALUES ('{schema}', '{schema}', '{table_name}', '{','.join([str(row[col]) for col in key_columns])}', '{row['CHG_DTM']}', 'Y')
-                """)
+                # 데이터 비교
+                diff_df = ora_df.merge(snow_df, how='outer', on=columns, indicator=True)
 
-            for _, row in only_in_snow_df.iterrows():
-                snowflake_engine.execute(f"""
-                    INSERT INTO DW_LOAD_DB.CONFIG.TB_DATA_VERIFY_DTL
-                    (DATABASE_NAME, SCHEMA_NAME, TABLE_NAME, KEYS, CHG_DTM, ORA_YN)
-                    VALUES ('{schema}', '{schema}', '{table_name}', '{','.join([str(row[col]) for col in key_columns])}', '{row['CHG_DTM']}', 'N')
-                """)
+                only_in_ora_df = diff_df[diff_df['_merge'] == 'left_only']
+                only_in_snow_df = diff_df[diff_df['_merge'] == 'right_only']
+
+                # Snowflake에 데이터 적재
+                for _, row in only_in_ora_df.iterrows():
+                    snowflake_engine.execute(f"""
+                        INSERT INTO DW_LOAD_DB.CONFIG.TB_DATA_VERIFY_DTL
+                        (DATABASE_NAME, SCHEMA_NAME, TABLE_NAME, KEYS, CHG_DTM, ORA_YN)
+                        VALUES ('기간계', '{schema}', '{table}', '{','.join([str(row[col]) for col in key_columns])}', '{row['CHG_DTM']}', 'Y')
+                    """)
+
+                for _, row in only_in_snow_df.iterrows():
+                    snowflake_engine.execute(f"""
+                        INSERT INTO DW_LOAD_DB.CONFIG.TB_DATA_VERIFY_DTL
+                        (DATABASE_NAME, SCHEMA_NAME, TABLE_NAME, KEYS, CHG_DTM, ORA_YN)
+                        VALUES ('DW_LOAD_DB', '{schema}', '{snowflake_table}', '{','.join([str(row[col]) for col in key_columns])}', '{row['CHG_DTM']}', 'N')
+                    """)
 
         oracle_connection.close()
         snowflake_connection.close()
 
-    ora_push(table_list=table_list)
+    ora_push(table_list=table_list, snowflake_suffixes=snowflake_suffixes)

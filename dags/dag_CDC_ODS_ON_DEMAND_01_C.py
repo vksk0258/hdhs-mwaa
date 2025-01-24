@@ -2,6 +2,7 @@ from airflow import DAG
 from airflow.decorators import task
 from airflow.operators.python import PythonOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+from operators.snowflake_to_s3_initial_load_operator import SnowfalkeToS3InitialLoadOperator
 import datetime
 import pandas as pd
 import pendulum
@@ -63,68 +64,16 @@ TABLE_NAME_LIST = [
 # Load parameters from S3
 s3 = boto3.client('s3')
 PARAM_BUCKET_NAME = "hdhs-dw-mwaa-s3"
-PARAM_KEY = "param/wf_DD01_0030_DAILY_MAIN_01.json"
+PARAM_KEY = "param/wf_DD01_0400_ON_DEMAND_01.json"
 response = s3.get_object(Bucket=PARAM_BUCKET_NAME, Key=PARAM_KEY)
 params = json.load(response['Body'])
 
-# Parse time parameters
-p_start = params.get('$$P_START')
-p_end = params.get('$$P_END')
-
-fm_p_start = datetime.datetime.strptime(f"{params.get('$$P_START')}000000", "%Y%m%d%H%M%S")
-fm_p_end = datetime.datetime.strptime(f"{params.get('$$P_END')}235959", "%Y%m%d%H%M%S")
-
-date_folder = fm_p_start.strftime('%Y/%m/%d')
-time_identifier = fm_p_end.strftime('%H%M%S')
-
 BATCH_SIZE = 100000
 
-def process_in_batches(table, columns):
-    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
 
-    if not os.path.exists(TMP_DIR):
-        os.makedirs(TMP_DIR)
-
-    schema, table_name = table.split('.')
-    print(table)
-
-    try:
-        with snowflake_hook.get_conn() as conn:
-            offset = 0
-            batch_number = 1
-
-            p_start_add_1d = fm_p_start + datetime.timedelta(days=1)
-            p_end_add_1d = fm_p_end + datetime.timedelta(days=1)
-
-            while True:
-                query = f"""
-                    SELECT {', '.join(columns)} 
-                    FROM {table} 
-                """
-                query += f"""
-                    WHERE APLY_DT >= '{p_start_add_1d.strftime('%Y-%m-%d')}' 
-                    AND APLY_DT <= '{p_end_add_1d.strftime('%Y-%m-%d')}'
-                """
-
-                print(query)
-
-                df = pd.read_sql(query, conn)
-                if df.empty:
-                    break
-
-                file_name = f"{TMP_DIR}/{table_name}_batch{batch_number}_{fm_p_end.strftime('%Y%m%d')}_{time_identifier}.parquet"
-                s3_path = f"s3://{S3_BUCKET_NAME}/dw/{schema}/{table_name}/{date_folder}/{fm_p_end.strftime('%Y%m%d')}-batch{batch_number}-{time_identifier}.parquet"
-
-                df.to_parquet(file_name, engine='pyarrow', index=False)
-                os.system(f"aws s3 cp {file_name} {s3_path}")
-                os.remove(file_name)
-
-                offset += BATCH_SIZE
-                batch_number += 1
-
-    except Exception as e:
-        print(f"Error processing table {table_name}: {e}")
-
+def log_etl_completion(**kwargs):
+    complete_time = kwargs['execution_date'].in_tz(pendulum.timezone("Asia/Seoul")).strftime('%Y-%m-%d %H:%M:%S')
+    print(f"*** {complete_time} : CDC_MART_LEV_02 프로시져 실행 완료 **")
 
 # Define the DAG
 with DAG(
@@ -133,20 +82,53 @@ with DAG(
     tags=["현대홈쇼핑","MART프로시져"]
 ) as dag:
 
-    @task(task_id="task_RAR_REAL_SWRT_DTL_TO_HDHS_c_01", trigger_rule="all_done")
-    def task_RAR_REAL_SWRT_DTL_TO_HDHS_c_01(table):
-        process_in_batches(table['table'], table['columns'])
-    @task(task_id="task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS_c_01", trigger_rule="all_done")
-    def task_RAR_REAL_SWRT_ETC_DTL_HDHS_c_01(table):
-        process_in_batches(table['table'], table['columns'])
+    task_RAR_REAL_SWRT_DTL_TO_HDHS_c_01 = SnowfalkeToS3InitialLoadOperator(
+        task_id="task_RAR_REAL_SWRT_DTL_TO_HDHS_c_01",
+        conn_id="conn_snowflake_etl",
+        table="DW_RM.RAR_REAL_SWRT_DTL",
+        columns=RAR_REAL_SWRT_DTL_COLUMNS,
+        p_start=params.get("$$P_START"),
+        p_end=params.get("$$P_END"),
+        batch_size=1000000,
+        retries=10,
+        retry_delay=datetime.timedelta(seconds=10)
+    )
 
-    @task(task_id="task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS_c_01", trigger_rule="all_done")
-    def task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS_c_01(table):
-        process_in_batches(table['table'], table['columns'])
+    task_RAR_REAL_SWRT_ETC_DTL_HDHS_c_01 = SnowfalkeToS3InitialLoadOperator(
+        task_id="task_RAR_REAL_SWRT_ETC_DTL_HDHS_c_01",
+        conn_id="conn_snowflake_etl",
+        table="DW_RM.RAR_REAL_SWRT_ETC_DTL",
+        columns=RAR_REAL_SWRT_ONLN_DTL_COLUMNS,
+        p_start=params.get("$$P_START"),
+        p_end=params.get("$$P_END"),
+        batch_size=1000000,
+        retries=10,
+        retry_delay=datetime.timedelta(seconds=10)
+    )
 
-    @task(task_id="task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS_c_01", trigger_rule="all_done")
-    def task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS_c_01(table):
-        process_in_batches(table['table'], table['columns'])
+    task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS_c_01 = SnowfalkeToS3InitialLoadOperator(
+        task_id="task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS_c_01",
+        conn_id="conn_snowflake_etl",
+        table="DW_RM.RAR_REAL_SWRT_ONLN_DTL",
+        columns=RAR_REAL_SWRT_ONLN_ETC_DTL_COLUMNS,
+        p_start=params.get("$$P_START"),
+        p_end=params.get("$$P_END"),
+        batch_size=1000000,
+        retries=10,
+        retry_delay=datetime.timedelta(seconds=10)
+    )
+
+    task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS_c_01 = SnowfalkeToS3InitialLoadOperator(
+        task_id="task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS_c_01",
+        conn_id="conn_snowflake_etl",
+        table="DW_RM.RAR_REAL_SWRT_ONLN_ETC_DTL",
+        columns=RAR_REAL_SWRT_ETC_DTL_COLUMNS,
+        p_start=params.get("$$P_START"),
+        p_end=params.get("$$P_END"),
+        batch_size=1000000,
+        retries=10,
+        retry_delay=datetime.timedelta(seconds=10)
+    )
 
 
     task_RAR_REAL_SWRT_DTL_TO_HDHS_c_01(TABLE_NAME_LIST[0]) >> \

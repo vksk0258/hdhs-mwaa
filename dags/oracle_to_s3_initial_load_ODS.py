@@ -110,10 +110,9 @@ def process_table(table_name, batch_size, tmp_dir, s3_bucket_name,**kwargs):
 # DAG 정의
 with DAG(
         dag_id="oracle_to_s3_initial_load_ODS",
-        schedule_interval='10 0 * * *',
-        start_date=pendulum.datetime(2025, 1, 15, tz="Asia/Seoul"),
+        schedule_interval=None,
         catchup=False,
-        dagrun_timeout=datetime.timedelta(minutes=2400),
+        dagrun_timeout=datetime.timedelta(minutes=10000),
         tags=["현대홈쇼핑", "초기적재"]
 ) as dag:
     tasks = []
