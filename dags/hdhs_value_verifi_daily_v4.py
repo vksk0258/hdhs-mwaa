@@ -9,8 +9,6 @@ import pandas as pd  # 데이터프레임 작업을 위한 pandas
 
 # Oracle Client 라이브러리 경로를 변수에서 가져옴
 client_path = Variable.get("client_path")
-#start_time = Variable.get("start_time")
-KST = pendulum.now("Asia/Seoul")
 
 def get_filtered_table_list(snowflake_hook):
     query = """
@@ -35,7 +33,7 @@ def split_dataframe(df, chunk_size):
 with DAG(
     dag_id="hdhs_value_verifi_daily_v4",  # DAG의 고유 식별자
     start_date=pendulum.datetime(2025, 1, 22, tz="Asia/Seoul"),
-    schedule_interval="0 9 * * *",
+    schedule_interval="0 7 * * *",
     catchup=False,  # 과거 데이터 실행을 스킵
     dagrun_timeout=datetime.timedelta(minutes=1000),  # DAG 실행 제한 시간
     tags=["현대홈쇼핑", "검증"]  # DAG에 붙일 태그
@@ -67,6 +65,8 @@ with DAG(
                 batch_id = f"{table_name}_{pendulum.now(kst).format('YYYYMMDDHHmmss')}"
                 print(f"Generated batch_id for table {table}: {batch_id}")
 
+                kst_now = pendulum.now("Asia/Seoul")
+
                 # 테이블 생성 확인 및 처리
                 with snowflake_hook.get_conn() as snowflake_conn:
                     with snowflake_conn.cursor() as cursor:
@@ -80,11 +80,11 @@ with DAG(
                         print(f"Table {table} created successfully")
 
                 chg_ext_ora_query = f"""
-                                        SELECT {', '.join(columns)},TO_CHAR(CHG_DTM, 'YYYYMMDDHH24MISS')
-                                        FROM {table}
-                                        WHERE CHG_DTM >= TO_DATE('{start_time}', 'YYYYMMDDHH24MISS')
-                                        ORDER BY {', '.join(columns)}
-                                    """
+                    SELECT {', '.join(columns)},TO_CHAR(CHG_DTM, 'YYYYMMDDHH24MISS')
+                    FROM {table}
+                    WHERE CHG_DTM >= TO_DATE('{start_time}', 'YYYYMMDDHH24MISS')
+                    ORDER BY {', '.join(columns)}
+                """
 
                 print(chg_ext_ora_query)
 
@@ -109,25 +109,25 @@ with DAG(
                 with snowflake_hook.get_conn() as snowflake_conn:
                     with snowflake_conn.cursor() as cursor:
                         diff_check_query = f"""
-                                        SELECT {', '.join(columns)}, ORACLE_CHG_DTM
-                                        FROM (SELECT {', '.join([f'A.{col}' for col in columns])},
-                                                   A.CHG_DTM,
-                                                   to_timestamp(B.CHG_DTM, 'YYYYMMDDHH24MISS') AS ORACLE_CHG_DTM,
-                                                   DATEDIFF('SECOND', A.CHG_DTM, ORACLE_CHG_DTM) AS SECOND_DIFF
-                                              FROM DW_LOAD_DB.{schema}.{table_name} A FULL OUTER JOIN DW_LOAD_DB.VERIFI_DATA.TEMP_{table_name}_ORA B 
-                                              ON {' AND '.join([f'A.{col} = B.{col}' for col in columns])}
-                                             WHERE A.CHG_DTM  >= TO_DATE('{start_time}', 'YYYYMMDDHH24MISS') ) A
-                                        WHERE 1=1 
-                                        AND (SECOND_DIFF IS NULL OR SECOND_DIFF != 0)
-                                        AND ORACLE_CHG_DTM <= (SELECT MAX(CHG_DTM) FROM DW_LOAD_DB.{schema}.{table_name})
-                                        AND NOT EXISTS (SELECT 1 
-                                                        FROM DW_LOAD_DB.TEMP.TEMP_{table_name} B
-                                                        WHERE 1=1
-                                                        AND {' AND '.join([f'A.{col} = B.{col}' for col in columns])}
-                                                        AND B.OP = 'D' 
-                                                        AND B.CHG_DTM > (SELECT MAX(CHG_DTM) FROM DW_LOAD_DB.{schema}.{table_name}))
-                                        ORDER BY ORACLE_CHG_DTM ASC
-                                        """
+                            SELECT {', '.join(columns)}, ORACLE_CHG_DTM
+                            FROM (SELECT {', '.join([f'A.{col}' for col in columns])},
+                                       A.CHG_DTM,
+                                       to_timestamp(B.CHG_DTM, 'YYYYMMDDHH24MISS') AS ORACLE_CHG_DTM,
+                                       DATEDIFF('SECOND', A.CHG_DTM, ORACLE_CHG_DTM) AS SECOND_DIFF
+                                  FROM DW_LOAD_DB.{schema}.{table_name} A FULL OUTER JOIN DW_LOAD_DB.VERIFI_DATA.TEMP_{table_name}_ORA B 
+                                  ON {' AND '.join([f'A.{col} = B.{col}' for col in columns])}
+                                 WHERE A.CHG_DTM  >= TO_DATE('{start_time}', 'YYYYMMDDHH24MISS') ) A
+                            WHERE 1=1 
+                            AND (SECOND_DIFF IS NULL OR SECOND_DIFF != 0)
+                            AND ORACLE_CHG_DTM <= (SELECT MAX(CHG_DTM) FROM DW_LOAD_DB.{schema}.{table_name})
+                            AND NOT EXISTS (SELECT 1 
+                                            FROM DW_LOAD_DB.TEMP.TEMP_{table_name} B
+                                            WHERE 1=1
+                                            AND {' AND '.join([f'A.{col} = B.{col}' for col in columns])}
+                                            AND B.OP = 'D' 
+                                            AND B.CHG_DTM > (SELECT MAX(CHG_DTM) FROM DW_LOAD_DB.{schema}.{table_name}))
+                            ORDER BY ORACLE_CHG_DTM ASC
+                        """
                         print(diff_check_query)
                         cursor.execute(diff_check_query)
                         diff_results = cursor.fetchall()
@@ -158,29 +158,29 @@ with DAG(
                             cursor.execute(insert_log_query)
 
                         only_ora_query = f"""
-                                        SELECT {', '.join(columns)}, to_timestamp(CHG_DTM, 'YYYYMMDDHH24MISS') AS ORA_CHG_DTM
-                                        FROM DW_LOAD_DB.VERIFI_DATA.TEMP_{table_name}_ORA
-                                        WHERE ({', '.join(columns)}) NOT IN (SELECT {', '.join(columns)} FROM DW_LOAD_DB.{schema}.{table_name})
-                                          AND to_timestamp(CHG_DTM, 'YYYYMMDDHH24MISS') <= (SELECT MAX(CHG_DTM) FROM DW_LOAD_DB.TEMP.TEMP_{table_name})
-                                        ORDER BY CHG_DTM ASC
-                                        """
+                            SELECT {', '.join(columns)}, to_timestamp(CHG_DTM, 'YYYYMMDDHH24MISS') AS ORA_CHG_DTM
+                            FROM DW_LOAD_DB.VERIFI_DATA.TEMP_{table_name}_ORA
+                            WHERE ({', '.join(columns)}) NOT IN (SELECT {', '.join(columns)} FROM DW_LOAD_DB.{schema}.{table_name})
+                              AND to_timestamp(CHG_DTM, 'YYYYMMDDHH24MISS') < (SELECT MAX(CHG_DTM) FROM DW_LOAD_DB.TEMP.TEMP_{table_name})
+                            ORDER BY CHG_DTM ASC
+                        """
                         print(only_ora_query)
                         cursor.execute(only_ora_query)
                         only_ora_results = cursor.fetchall()
 
                         only_snow_query = f"""
-                                        SELECT {', '.join(columns)}, CHG_DTM AS SNOW_CHG_DTM
-                                        FROM DW_LOAD_DB.{schema}.{table_name} A
-                                        WHERE ({', '.join(columns)}) NOT IN (SELECT {', '.join(columns)} FROM DW_LOAD_DB.VERIFI_DATA.TEMP_{table_name}_ORA)
-                                          AND CHG_DTM >= TO_DATE('{start_time}', 'YYYYMMDDHH24MISS')
-                                          AND NOT EXISTS (SELECT 1 
-                                                        FROM DW_LOAD_DB.TEMP.TEMP_{table_name} B
-                                                        WHERE 1=1
-                                                        AND {' AND '.join([f'A.{col} = B.{col}' for col in columns])}
-                                                        AND B.OP = 'D' 
-                                                        AND B.CHG_DTM > (SELECT MAX(CHG_DTM) FROM DW_LOAD_DB.{schema}.{table_name}))
-                                        ORDER BY CHG_DTM ASC
-                                        """
+                            SELECT {', '.join(columns)}, CHG_DTM AS SNOW_CHG_DTM
+                            FROM DW_LOAD_DB.{schema}.{table_name} A
+                            WHERE ({', '.join(columns)}) NOT IN (SELECT {', '.join(columns)} FROM DW_LOAD_DB.VERIFI_DATA.TEMP_{table_name}_ORA)
+                              AND CHG_DTM >= TO_DATE('{start_time}', 'YYYYMMDDHH24MISS')
+                              AND NOT EXISTS (SELECT 1 
+                                            FROM DW_LOAD_DB.TEMP.TEMP_{table_name} B
+                                            WHERE 1=1
+                                            AND {' AND '.join([f'A.{col} = B.{col}' for col in columns])}
+                                            AND B.OP = 'D' 
+                                            AND B.CHG_DTM >= (SELECT MAX(CHG_DTM) FROM DW_LOAD_DB.{schema}.{table_name}))
+                            ORDER BY CHG_DTM ASC
+                        """
                         print(only_snow_query)
                         cursor.execute(only_snow_query)
                         only_snow_results = cursor.fetchall()
@@ -188,14 +188,14 @@ with DAG(
                         # 로그 테이블 생성
                         outer_log_table_name = f"TEMP_{table_name}_outer_log"
                         create_outer_log_table_query = f"""
-                                                        CREATE TABLE IF NOT EXISTS DW_LOAD_DB.VERIFI_DATA.{outer_log_table_name} (
-                                                            BATCH_ID VARCHAR(50), {', '.join([f'{col} VARCHAR(50)' for col in columns])},
-                                                            ORA_CHG_DTM TIMESTAMP,
-                                                            SNOW_CHG_DTM TIMESTAMP,
-                                                            verifi_date VARCHAR(20),
-                                                            ORA_ONLY_YN VARCHAR(2)
-                                                        )
-                                                        """
+                            CREATE TABLE IF NOT EXISTS DW_LOAD_DB.VERIFI_DATA.{outer_log_table_name} (
+                                BATCH_ID VARCHAR(50), {', '.join([f'{col} VARCHAR(50)' for col in columns])},
+                                ORA_CHG_DTM TIMESTAMP,
+                                SNOW_CHG_DTM TIMESTAMP,
+                                verifi_date VARCHAR(20),
+                                ORA_ONLY_YN VARCHAR(2)
+                            )
+                        """
                         cursor.execute(create_outer_log_table_query)
 
                         # Oracle 데이터 삽입
@@ -222,31 +222,39 @@ with DAG(
                             """
                             cursor.execute(insert_outer_log_query)
 
-                        execution_dtm = KST.to_datetime_string()
-
+                        execution_dtm = kst_now.to_datetime_string()
 
                         dtm_obj = datetime.datetime.strptime(start_time, '%Y%m%d%H%M%S')
                         formatted_dtm = dtm_obj.strftime('%Y-%m-%d %H:%M:%S')
 
                         insert_verifi_log_query = f"""
-                        INSERT INTO DW_LOAD_DB.VERIFI_DATA.CDC_DATA_VERIFI_LOG (
-                            BATCH_ID,TABLE_NM, SCHEMA_NAME, VERIFI_DATE,
-                            CHG_DTM_DIFF_COUNT,
-                            CHG_DTM_DIFF_QUERY,
-                            ORACLE_ONLY_COUNT,
-                            ORACLE_ONLY_QUERY,
-                            SNOW_ONLY_COUNT,
-                            SNOW_ONLY_QUERY,
-                            EXECUTE_DTM,
-                            TEMP_MAX_CHG_DTM
-                        ) VALUES (
-                            '{batch_id}','{table_name}', '{schema}', '{formatted_dtm}', {len(diff_results)},
-                            '{diff_check_query.replace("'","''")}',
-                            {len(only_ora_results)},'{only_ora_query.replace("'","''")}' , {len(only_snow_results)}, '{only_snow_query.replace("'","''")}',
-                            '{execution_dtm}',{f"'{temp_max_chg_dtm}'" if temp_max_chg_dtm else 'null'}
-                        )
+                            INSERT INTO DW_LOAD_DB.VERIFI_DATA.CDC_DATA_VERIFI_LOG (
+                                BATCH_ID, TABLE_NM, SCHEMA_NAME, VERIFI_DATE,
+                                CHG_DTM_DIFF_COUNT,
+                                CHG_DTM_DIFF_QUERY,
+                                ORACLE_ONLY_COUNT,
+                                ORACLE_ONLY_QUERY,
+                                SNOW_ONLY_COUNT,
+                                SNOW_ONLY_QUERY,
+                                EXECUTE_DTM,
+                                TEMP_MAX_CHG_DTM
+                            ) VALUES (
+                                '{batch_id}',
+                                '{table_name}', 
+                                '{schema}', 
+                                '{formatted_dtm}', 
+                                {len(diff_results)},
+                                '{diff_check_query.replace("'", "''")}',
+                                {len(only_ora_results)}, 
+                                '{only_ora_query.replace("'", "''")}' , 
+                                {len(only_snow_results)}, 
+                                '{only_snow_query.replace("'", "''")}',
+                                '{execution_dtm}', 
+                                {f"'{temp_max_chg_dtm}'" if temp_max_chg_dtm else 'null'}
+                            )
                         """
                         cursor.execute(insert_verifi_log_query)
+
             except Exception as e:
                 print(f"Error with value: {e}")
 

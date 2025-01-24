@@ -18,23 +18,92 @@ with DAG(
         task_id="task_ETL_SCHEDULE_c_01"
     )
 
-    # trigger_dag_CDC_MART_01 = TriggerDagRunOperator(
-    #     task_id='trigger_dag_CDC_MART_01',
-    #     trigger_dag_id='dag_CDC_MART_01',
-    #     trigger_run_id=None,
-    #     reset_dag_run=True,
-    #     wait_for_completion=False,
-    #     poke_interval=60,
-    #     allowed_states=['success'],
-    #     failed_states=None,
-    #     trigger_rule="all_done"
-    # )
-
     trigger_dag_CDC_ODS_SUB_ALLI_01 = TriggerDagRunOperator(
         task_id='trigger_dag_CDC_ODS_SUB_ALLI_01',
         trigger_dag_id='dag_CDC_ODS_SUB_ALLI_01',
         reset_dag_run=True,         # 이미 수행된 dag여도 수행 할 것인지
-        wait_for_completion=False,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+        wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+        poke_interval=60,
+        allowed_states=['success'], # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
+        trigger_rule="all_done"
+    )
+
+    trigger_dag_CDC_ODS_01 = TriggerDagRunOperator(
+        task_id='trigger_dag_CDC_ODS_01',
+        trigger_dag_id='dag_CDC_ODS_01',
+        reset_dag_run=True,         # 이미 수행된 dag여도 수행 할 것인지
+        wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+        poke_interval=60,
+        allowed_states=['success'], # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
+        trigger_rule="all_done"
+    )
+
+    trigger_dag_CDC_ODS_WEBLOG_CTI_01 = TriggerDagRunOperator(
+        task_id='trigger_dag_CDC_ODS_WEBLOG_CTI_01',
+        trigger_dag_id='dag_CDC_ODS_WEBLOG_CTI_01',
+        reset_dag_run=True,  # 이미 수행된 dag여도 수행 할 것인지
+        wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+        poke_interval=60,
+        allowed_states=['success'],  # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
+        trigger_rule="all_done"
+    )
+
+    trigger_dag_DD01_0010_MKTG_AGR_TERM_01 = TriggerDagRunOperator(
+        task_id='trigger_dag_DD01_0010_MKTG_AGR_TERM_01',
+        trigger_dag_id='dag_DD01_0010_MKTG_AGR_TERM_01',
+        reset_dag_run=True,  # 이미 수행된 dag여도 수행 할 것인지
+        wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+        poke_interval=60,
+        allowed_states=['success'],  # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
+        trigger_rule="all_done"
+    )
+
+    trigger_dag_CDC_ODS_02 = TriggerDagRunOperator(
+        task_id='trigger_dag_CDC_ODS_02',
+        trigger_dag_id='dag_CDC_ODS_02',
+        reset_dag_run=True,  # 이미 수행된 dag여도 수행 할 것인지
+        wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+        poke_interval=60,
+        allowed_states=['success'],  # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
+        trigger_rule="all_done"
+    )
+
+    trigger_dag_DD01_0010_CUST_TNDC_INF_01 = TriggerDagRunOperator(
+        task_id='trigger_dag_DD01_0010_CUST_TNDC_INF_01',
+        trigger_dag_id='dag_DD01_0010_CUST_TNDC_INF_01',
+        reset_dag_run=True,  # 이미 수행된 dag여도 수행 할 것인지
+        wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+        poke_interval=60,
+        allowed_states=['success'],  # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
+        trigger_rule="all_done"
+    )
+
+    trigger_dag_CDC_MART_01 = TriggerDagRunOperator(
+        task_id='trigger_dag_CDC_MART_01',
+        trigger_dag_id='dag_CDC_MART_01',
+        reset_dag_run=True,         # 이미 수행된 dag여도 수행 할 것인지
+        wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+        poke_interval=60,
+        allowed_states=['success'], # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
+        trigger_rule="all_done"
+    )
+
+    trigger_dag_DD01_001O_VLID_TERM_01 = TriggerDagRunOperator(
+        task_id='trigger_dag_DD01_001O_VLID_TERM_01',
+        trigger_dag_id='dag_DD01_001O_VLID_TERM_01',
+        reset_dag_run=True,         # 이미 수행된 dag여도 수행 할 것인지
+        wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+        poke_interval=60,
+        allowed_states=['success'], # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
+        trigger_rule="all_done"
+    )
+
+    trigger_dag_DD01_001O_PHYS_DIST_01 = TriggerDagRunOperator(
+        task_id='trigger_dag_DD01_001O_PHYS_DIST_01',
+        trigger_dag_id='dag_DD01_001O_PHYS_DIST_01',
+        reset_dag_run=True,         # 이미 수행된 dag여도 수행 할 것인지
+        wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+        poke_interval=60,
         allowed_states=['success'], # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
         trigger_rule="all_done"
     )
@@ -43,11 +112,21 @@ with DAG(
         task_id='trigger_dag_CDC_ODS_SUB_CMS_01',
         trigger_dag_id='dag_CDC_ODS_SUB_CMS_01',
         reset_dag_run=True,         # 이미 수행된 dag여도 수행 할 것인지
-        wait_for_completion=False,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+        wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+        poke_interval=60,
         allowed_states=['success'], # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
         trigger_rule="all_done"
     )
 
 
 
-    task_ETL_SCHEDULE_c_01 >> trigger_dag_CDC_ODS_SUB_ALLI_01 >> trigger_dag_CDC_ODS_SUB_CMS_01
+    # task_ETL_SCHEDULE_c_01 >> trigger_dag_CDC_ODS_SUB_ALLI_01 >> trigger_dag_CDC_ODS_SUB_CMS_01
+
+
+    task_ETL_SCHEDULE_c_01 >> [trigger_dag_CDC_ODS_SUB_ALLI_01, trigger_dag_CDC_ODS_01]
+
+    trigger_dag_CDC_ODS_01 >> [trigger_dag_CDC_ODS_WEBLOG_CTI_01, trigger_dag_DD01_0010_MKTG_AGR_TERM_01, trigger_dag_CDC_ODS_02, trigger_dag_DD01_0010_CUST_TNDC_INF_01, trigger_dag_CDC_MART_01]
+
+    trigger_dag_CDC_ODS_WEBLOG_CTI_01 >> trigger_dag_DD01_001O_VLID_TERM_01
+
+    trigger_dag_CDC_MART_01 >> trigger_dag_DD01_001O_PHYS_DIST_01
