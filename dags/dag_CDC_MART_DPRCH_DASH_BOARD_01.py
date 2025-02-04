@@ -8,12 +8,13 @@ import json
 # S3 parameters
 s3 = boto3.client('s3')
 bucket_name = "hdhs-dw-mwaa-s3"
-key = "param/wf_DD01_0700_ON_DEMAND_02.json"
+key = "param/wf_DD01_0900_DAILY_BROAD_01.json"
 response = s3.get_object(Bucket=bucket_name, Key=key)
 params = json.load(response['Body'])
 
 p_start = params.get("$$P_START")
 p_end = params.get("$$P_END")
+
 
 def log_result_to_snowflake(procedure_name, start_time, end_time, result, p_start, p_end):
     """
@@ -77,17 +78,49 @@ def log_etl_completion(**kwargs):
     complete_time = kwargs['execution_date'].in_tz(pendulum.timezone("Asia/Seoul")).strftime('%Y-%m-%d %H:%M:%S')
     print(f"*** {complete_time} : CDC_MART_LEV_02 프로시져 실행 완료 **")
 
+
+
 with DAG(
-    dag_id="dag_CDC_MART_ON_DEMAND_02",
+    dag_id="dag_CDC_MART_DPRCH_DASH_BOARD_01",
     schedule_interval=None,
-    tags=["현대홈쇼핑","dag_DD01_0710_ON_DEMAND_02"]
+    tags=["현대홈쇼핑","dag_DD01_0800_DPRCH_DASH_BOARD_01"]
 ) as dag:
-    task_SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL = PythonOperator(
-        task_id="task_SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL",
+    task_SP_RPS_DPRCH_IO_DTL = PythonOperator(
+        task_id="task_SP_RPS_DPRCH_IO_DTL",
         python_callable=execute_procedure,
-        op_args=["SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL", p_start, p_end],
+        op_args=["SP_RPS_DPRCH_IO_DTL", p_start, p_end],
         trigger_rule="all_done"
     )
 
+    task_SP_RPS_DPRCH_SCO_DTL = PythonOperator(
+        task_id="task_SP_RPS_DPRCH_SCO_DTL",
+        python_callable=execute_procedure,
+        op_args=["SP_RPS_DPRCH_SCO_DTL", p_start, p_end],
+        trigger_rule="all_done"
+    )
 
-    task_SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL
+    task_SP_RPS_DPRCH_SIS_DTL = PythonOperator(
+        task_id="task_SP_RPS_DPRCH_SIS_DTL",
+        python_callable=execute_procedure,
+        op_args=["SP_RPS_DPRCH_SIS_DTL", p_start, p_end],
+        trigger_rule="all_done"
+    )
+
+    task_SP_ROD_DPRCH_ORD_DTL = PythonOperator(
+        task_id="task_SP_ROD_DPRCH_ORD_DTL",
+        python_callable=execute_procedure,
+        op_args=["SP_ROD_DPRCH_ORD_DTL", p_start, p_end],
+        trigger_rule="all_done"
+    )
+
+    task_SP_ROD_DPRCH_BROD_ORD_DTL = PythonOperator(
+        task_id="task_SP_ROD_DPRCH_BROD_ORD_DTL",
+        python_callable=execute_procedure,
+        op_args=["SP_ROD_DPRCH_BROD_ORD_DTL", p_start, p_end],
+        trigger_rule="all_done"
+    )
+
+    [task_SP_RPS_DPRCH_IO_DTL, task_SP_RPS_DPRCH_SCO_DTL]
+    task_SP_RPS_DPRCH_IO_DTL >> task_SP_ROD_DPRCH_ORD_DTL >> task_SP_ROD_DPRCH_BROD_ORD_DTL
+    task_SP_RPS_DPRCH_SCO_DTL >> task_SP_RPS_DPRCH_SIS_DTL
+

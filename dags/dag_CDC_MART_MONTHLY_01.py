@@ -1,6 +1,9 @@
 from airflow import DAG
+from airflow.decorators import task
+from airflow.utils.task_group import TaskGroup
 from airflow.operators.python import PythonOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+from datetime import datetime, timedelta
 import pendulum
 import boto3
 import json
@@ -8,12 +11,13 @@ import json
 # S3 parameters
 s3 = boto3.client('s3')
 bucket_name = "hdhs-dw-mwaa-s3"
-key = "param/wf_DD01_0700_ON_DEMAND_02.json"
+key = "param/wf_DD01_0030_DAILY_MAIN_01.json"
 response = s3.get_object(Bucket=bucket_name, Key=key)
 params = json.load(response['Body'])
 
 p_start = params.get("$$P_START")
 p_end = params.get("$$P_END")
+
 
 def log_result_to_snowflake(procedure_name, start_time, end_time, result, p_start, p_end):
     """
@@ -77,17 +81,41 @@ def log_etl_completion(**kwargs):
     complete_time = kwargs['execution_date'].in_tz(pendulum.timezone("Asia/Seoul")).strftime('%Y-%m-%d %H:%M:%S')
     print(f"*** {complete_time} : CDC_MART_LEV_02 프로시져 실행 완료 **")
 
+
 with DAG(
-    dag_id="dag_CDC_MART_ON_DEMAND_02",
+    dag_id="dag_CDC_MART_MONTHLY_01",
     schedule_interval=None,
-    tags=["현대홈쇼핑","dag_DD01_0710_ON_DEMAND_02"]
+    catchup=False,
+    tags=["현대홈쇼핑", "MART프로시져"]
 ) as dag:
-    task_SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL = PythonOperator(
-        task_id="task_SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL",
+    @task.branch(task_id='branching')
+    def check_monthly(p_end):
+        if p_end[6:8] == '01': # 7번째(인덱스 6)부터 2글자
+            return 'task_a'
+        elif (datetime.strptime(p_end, "%Y%m%d") + + timedelta(days=1)).strftime("%Y%m%d")[6:8] == '01':
+            return 'task_b'
+        elif selected_items == 'C':
+            return 'task_c'
+
+    task_SP_RAR_REAL_SWRT_DTL = PythonOperator(
+        task_id="task_SP_RAR_REAL_SWRT_DTL",
         python_callable=execute_procedure,
-        op_args=["SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL", p_start, p_end],
+        op_args=["SP_RAR_REAL_SWRT_DTL", p_start, p_end],
         trigger_rule="all_done"
     )
 
+    task_SP_RAR_REAL_SWRT_ONLN_DTL = PythonOperator(
+        task_id="task_SP_RAR_REAL_SWRT_ONLN_DTL",
+        python_callable=execute_procedure,
+        op_args=["SP_RAR_REAL_SWRT_ONLN_DTL", p_start, p_end],
+        trigger_rule="all_done"
+    )
 
-    task_SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL
+    task_SP_DAILY_PRCDR_BAK = PythonOperator(
+        task_id="task_SP_DAILY_PRCDR_BAK",
+        python_callable=execute_procedure,
+        op_args=["SP_DAILY_PRCDR_BAK", p_start, p_end],
+        trigger_rule="all_done"
+    )
+
+    task_SP_RAR_REAL_SWRT_DTL >> task_SP_RAR_REAL_SWRT_ONLN_DTL >> task_SP_DAILY_PRCDR_BAK

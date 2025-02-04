@@ -75,11 +75,6 @@ with DAG(
 
             # Oracle에서 데이터 조회
             ora_df = pd.read_sql(ora_query, con=oracle_connection)
-            batch_size = 50000
-            for batch_df in split_dataframe(ora_df, batch_size):
-                batch_df.to_sql("AM_ALML_MD_VEN_INTL_SETUP_DTL", con=engine, schema="ODS_ALLI", if_exists='append',
-                                index=False)
-                print("적재완료")
 
             # Snowflake 테이블 접미사 순회하며 데이터 비교
             for suffix in snowflake_suffixes:
