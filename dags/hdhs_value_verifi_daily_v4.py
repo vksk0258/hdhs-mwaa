@@ -104,7 +104,7 @@ with DAG(
 
                 print(chg_ext_ora_df)
 
-                batch_size = 150000
+                batch_size = 100000
                 for batch_df in split_dataframe(chg_ext_ora_df, batch_size):
                     batch_df.to_sql(f"TEMP_{table_name}_ORA", con=engine, schema="VERIFI_DATA", if_exists='append',
                                     index=False)
