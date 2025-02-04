@@ -23,6 +23,9 @@ def get_filtered_table_list(snowflake_hook):
     for full_table_name, group in df.groupby("FULL_TABLE_NAME"):
         table_list[full_table_name] = group["COLUMN_NAME"].tolist()
 
+
+    print(table_list)
+
     return table_list
 
 def split_dataframe(df, chunk_size):
