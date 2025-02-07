@@ -95,7 +95,7 @@ def task_DWCT_HSPLIT_c_01 (table,columns, not_null_columns, **kwargs):
 
     save_name = current_time.strftime('%Y%m%d')
 
-    batch_size = 300000
+    batch_size = 50000
 
     while True:
         # SQL 실행 (OFFSET-FETCH 또는 ROWNUM 사용)
@@ -150,7 +150,7 @@ with DAG(
         not_null_columns = dagent_primary_keys,
         p_start=params.get("$$P_START"),
         p_end=params.get("$$P_END"),
-        batch_size = 500000,
+        batch_size = 100000,
         retries=10,
         retry_delay=datetime.timedelta(seconds=10)
     )
@@ -163,7 +163,7 @@ with DAG(
         not_null_columns = hagent_primary_keys,
         p_start=params.get("$$P_START"),
         p_end=params.get("$$P_END"),
-        batch_size = 500000,
+        batch_size = 50000,
         retries = 10,
         retry_delay = datetime.timedelta(seconds=10)
     )

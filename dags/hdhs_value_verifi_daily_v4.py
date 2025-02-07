@@ -90,7 +90,8 @@ with DAG(
                 """
 
                 print(chg_ext_ora_query)
-
+                
+                
                 # Oracle에서 데이터 조회
                 chg_ext_ora_df = pd.read_sql(chg_ext_ora_query, con=oracle_connection)
                 print(chg_ext_ora_df)
@@ -108,6 +109,7 @@ with DAG(
                 for batch_df in split_dataframe(chg_ext_ora_df, batch_size):
                     batch_df.to_sql(f"TEMP_{table_name}_ORA", con=engine, schema="VERIFI_DATA", if_exists='append',
                                     index=False)
+                
 
                 with snowflake_hook.get_conn() as snowflake_conn:
                     with snowflake_conn.cursor() as cursor:
@@ -162,9 +164,15 @@ with DAG(
 
                         only_ora_query = f"""
                             SELECT {', '.join(columns)}, to_timestamp(CHG_DTM, 'YYYYMMDDHH24MISS') AS ORA_CHG_DTM
-                            FROM DW_LOAD_DB.VERIFI_DATA.TEMP_{table_name}_ORA
+                            FROM DW_LOAD_DB.VERIFI_DATA.TEMP_{table_name}_ORA A
                             WHERE ({', '.join(columns)}) NOT IN (SELECT {', '.join(columns)} FROM DW_LOAD_DB.{schema}.{table_name})
                               AND to_timestamp(CHG_DTM, 'YYYYMMDDHH24MISS') < (SELECT MAX(CHG_DTM) FROM DW_LOAD_DB.TEMP.TEMP_{table_name})
+                              AND NOT EXISTS (SELECT 1 
+                                                FROM DW_LOAD_DB.TEMP.TEMP_{table_name} B
+                                                WHERE 1=1
+                                                AND {' AND '.join([f'A.{col} = B.{col}' for col in columns])}
+                                                AND B.OP = 'I' 
+                                                AND B.CHG_DTM >= (SELECT MAX(CHG_DTM) FROM DW_LOAD_DB.{schema}.{table_name}))
                             ORDER BY CHG_DTM ASC
                         """
                         print(only_ora_query)

@@ -14,7 +14,7 @@ import time
 # S3 parameters
 s3 = boto3.client('s3')
 bucket_name = "hdhs-dw-mwaa-s3"
-key = "param/wf_DD01_0030_DAILY_MAIN_01.json"
+key = "param/wf_DD01_0900_DAILY_BROAD_01.json"
 response = s3.get_object(Bucket=bucket_name, Key=key)
 params = json.load(response['Body'])
 
@@ -113,19 +113,49 @@ def execute_procedure_dycl(procedure_name, p_start, p_end, **kwargs):
     try:
         with snowflake_hook.get_conn() as conn:
             with conn.cursor() as cur:
-                query = f"CALL ETL_SERVICE.{procedure_name}('{v_p_start}', '{v_p_end}','{p_dcyl}')"
+                query = f"CALL ETL_SERVICE.{procedure_name}('{v_p_start}', '{v_p_end}',{p_dcyl})"
                 print(query)
-                # cur.execute(query)
-                # result = cur.fetchall()
-                # result_message = result[0][0] if result and result[0] else "No result returned"
-                # print(f"Procedure result: {result_message}")
+                cur.execute(query)
+                result = cur.fetchall()
+                result_message = result[0][0] if result and result[0] else "No result returned"
+                print(f"Procedure result: {result_message}")
     except Exception as e:
         result_message = str(e)
         print(f"Procedure execute error message: {result_message}")
     end_time = pendulum.now("Asia/Seoul")
 
     # Log the result to Snowflake
-    # log_result_to_snowflake(procedure_name, start_time, end_time, result_message, p_start, p_end)
+    log_result_to_snowflake(procedure_name, start_time, end_time, result_message, p_start, p_end)
+
+def execute_procedure_no_dycl(procedure_name, p_start, p_end, **kwargs):
+    """
+    Executes a stored procedure in Snowflake with calculated parameters.
+    """
+    task_id = kwargs['task_instance'].task_id
+    print(f"Task ID: {task_id}")
+    # Calculate parameters based on task_id
+    v_p_start, v_p_end, p_dcyl = calculate_params(task_id, p_start, p_end)
+
+    # Snowflake procedure execution
+    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
+    start_time = pendulum.now("Asia/Seoul")
+
+    try:
+        with snowflake_hook.get_conn() as conn:
+            with conn.cursor() as cur:
+                query = f"CALL ETL_SERVICE.{procedure_name}('{v_p_start}', '{v_p_end}')"
+                print(query)
+                cur.execute(query)
+                result = cur.fetchall()
+                result_message = result[0][0] if result and result[0] else "No result returned"
+                print(f"Procedure result: {result_message}")
+    except Exception as e:
+        result_message = str(e)
+        print(f"Procedure execute error message: {result_message}")
+    end_time = pendulum.now("Asia/Seoul")
+
+    # Log the result to Snowflake
+    log_result_to_snowflake(procedure_name, start_time, end_time, result_message, p_start, p_end)
 
 def execute_procedure(procedure_name, p_start, p_end,**kwargs):
     """
@@ -143,18 +173,18 @@ def execute_procedure(procedure_name, p_start, p_end,**kwargs):
             with conn.cursor() as cur:
                 query = f"CALL ETL_SERVICE.{procedure_name}('{p_start}', '{p_end}')"
                 print(query)
-                # cur.execute(query)
-                # result = cur.fetchall()
+                cur.execute(query)
+                result = cur.fetchall()
                 # Handle empty result properly
-                # result_message = result[0][0] if result and result[0] else "No result returned"
-                # print(f"Procedure result: {result_message}")
+                result_message = result[0][0] if result and result[0] else "No result returned"
+                print(f"Procedure result: {result_message}")
     except Exception as e:
         result_message = str(e)
         print(f"Procedure execute error message: {result_message}")
     end_time = pendulum.now("Asia/Seoul")
 
     # Log the result to Snowflake
-    # log_result_to_snowflake(procedure_name, start_time, end_time, result_message, p_start, p_end)
+    log_result_to_snowflake(procedure_name, start_time, end_time, result_message, p_start, p_end)
 
 
 def log_etl_completion(**kwargs):
@@ -165,7 +195,7 @@ with DAG(
     dag_id="dag_CDC_MART_DAILY_BROAD_01",
     schedule_interval=None,
     catchup=False,
-    tags=["현대홈쇼핑", "MART프로시져"]
+    tags=["현대홈쇼핑","dag_DD01_0630_DAILY_BROAD_01","MART프로시져"]
 ) as dag:
 
     task_SP_DW_USE_RATIO = PythonOperator(
@@ -250,7 +280,7 @@ with DAG(
 
     task_SP_RIA_BITM_ORD_EXP_FCT_D001 = PythonOperator(
         task_id="task_SP_RIA_BITM_ORD_EXP_FCT_D001",
-        python_callable=execute_procedure_dycl,
+        python_callable=execute_procedure_no_dycl,
         op_args=["SP_RIA_BITM_ORD_EXP_FCT", p_start, p_end],
         trigger_rule="none_skipped"
     )
@@ -264,7 +294,7 @@ with DAG(
 
     task_SP_RIA_BITM_ORD_EXP_FCT_02_D001 = PythonOperator(
         task_id="task_SP_RIA_BITM_ORD_EXP_FCT_02_D001",
-        python_callable=execute_procedure_dycl,
+        python_callable=execute_procedure_no_dycl,
         op_args=["SP_RIA_BITM_ORD_EXP_FCT_02", p_start, p_end],
         trigger_rule="none_skipped"
     )
@@ -306,7 +336,7 @@ with DAG(
 
     task_SP_RIA_DTBRC_ORD_EXP_FCT_D001 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_EXP_FCT_D001",
-        python_callable=execute_procedure_dycl,
+        python_callable=execute_procedure_no_dycl,
         op_args=["SP_RIA_DTBRC_ORD_EXP_FCT", p_start, p_end],
         trigger_rule="none_skipped"
     )
@@ -320,7 +350,7 @@ with DAG(
 
     task_SP_RIA_DTBRC_ORD_EXP_FCT_02_D001 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_EXP_FCT_02_D001",
-        python_callable=execute_procedure_dycl,
+        python_callable=execute_procedure_no_dycl,
         op_args=["SP_RIA_DTBRC_ORD_EXP_FCT_02", p_start, p_end],
         trigger_rule="none_skipped"
     )

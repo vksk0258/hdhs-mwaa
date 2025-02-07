@@ -19,7 +19,7 @@ def oracle_conn_main_test(**kwargs):
     Oracle DB에서 쿼리를 수행하고 결과를 XCom에 저장
     """
     oracle_hook = OracleHook(
-        oracle_conn_id='conn_oracle_main',
+        oracle_conn_id='conn_oracle_OCI',
         thick_mode=True,
         thick_mode_lib_dir=client_path
     )

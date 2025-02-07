@@ -1,11 +1,14 @@
 from airflow import DAG
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
-
-
+from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
+from datetime import timedelta
+import pendulum
 
 with DAG(
     dag_id="dag_DD01_0800_DPRCH_DASH_BOARD_01",
-    schedule_interval=None,
+    schedule_interval='0 8 * * *',
+    start_date=pendulum.datetime(2025, 2, 5, tz="Asia/Seoul"),
+    dagrun_timeout=timedelta(minutes=4000),
     tags=["현대홈쇼핑","100_COM"]
 ) as dag:
     trigger_dag_CDC_META_DPRCH_DASH_01 = TriggerDagRunOperator(

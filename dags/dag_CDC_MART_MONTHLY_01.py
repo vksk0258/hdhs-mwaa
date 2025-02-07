@@ -1,10 +1,9 @@
 from airflow import DAG
-from airflow.decorators import task
-from airflow.utils.task_group import TaskGroup
 from airflow.operators.python import PythonOperator
+from airflow.decorators import task
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+from common.common_call_procedure import execute_procedure, execute_procedure_dycl, log_etl_completion
 from datetime import datetime, timedelta
-import pendulum
 import boto3
 import json
 
@@ -19,69 +18,6 @@ p_start = params.get("$$P_START")
 p_end = params.get("$$P_END")
 
 
-def log_result_to_snowflake(procedure_name, start_time, end_time, result, p_start, p_end):
-    """
-    Logs the result of a procedure execution to Snowflake table.
-    """
-    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
-    # Ensure result is not None
-    result = result or "No result returned"
-
-    # Check for errors in result
-    if 'SQL compilation error' in result or 'Procedure execute error' in result:
-        status = 'ER'
-    else:
-        status = 'OK'
-
-    message = result.replace("'", "''")
-    jb_pmt = f'[{p_start}]-[{p_end}]'
-
-    query = f"""
-    INSERT INTO DW_ETL_DB.DW_ETC.JOB_RESULT_MWAA (
-        PGMID, STARTTIME, ENDTIME, ST, JBPMT, MSG
-    )
-    VALUES (
-        '{procedure_name}', '{start_time}', '{end_time}', '{status}', '{jb_pmt}', '{message}'
-    )
-    """
-    print(query)
-
-    with snowflake_hook.get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(query)
-
-
-def execute_procedure(procedure_name, p_start, p_end):
-    """
-    Executes a stored procedure in Snowflake and logs the result.
-    """
-    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
-    start_time = pendulum.now("Asia/Seoul")
-
-    try:
-        with snowflake_hook.get_conn() as conn:
-            with conn.cursor() as cur:
-                query = f"CALL ETL_SERVICE.{procedure_name}('{p_start}', '{p_end}')"
-                print(query)
-                cur.execute(query)
-                result = cur.fetchall()
-                # Handle empty result properly
-                result_message = result[0][0] if result and result[0] else "No result returned"
-                print(f"Procedure result: {result_message}")
-    except Exception as e:
-        result_message = str(e)
-        print(f"Procedure execute error message: {result_message}")
-    end_time = pendulum.now("Asia/Seoul")
-
-    # Log the result to Snowflake
-    log_result_to_snowflake(procedure_name, start_time, end_time, result_message, p_start, p_end)
-
-
-def log_etl_completion(**kwargs):
-    complete_time = kwargs['execution_date'].in_tz(pendulum.timezone("Asia/Seoul")).strftime('%Y-%m-%d %H:%M:%S')
-    print(f"*** {complete_time} : CDC_MART_LEV_02 프로시져 실행 완료 **")
-
-
 with DAG(
     dag_id="dag_CDC_MART_MONTHLY_01",
     schedule_interval=None,
@@ -91,31 +27,226 @@ with DAG(
     @task.branch(task_id='branching')
     def check_monthly(p_end):
         if p_end[6:8] == '01': # 7번째(인덱스 6)부터 2글자
-            return 'task_a'
-        elif (datetime.strptime(p_end, "%Y%m%d") + + timedelta(days=1)).strftime("%Y%m%d")[6:8] == '01':
-            return 'task_b'
-        elif selected_items == 'C':
-            return 'task_c'
+            return ['task_SP_ROD_CUST_PET_GRD_INF', 'task_SP_RCU_HMALL_CUST_GRD_DTL']
+        elif (datetime.strptime(p_end, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")[6:8] == '01':
+            return ['task_SP_HDHS_INSU_DELETE', 'task_SP_COPY_STTC', 'task_SP_RPD_DPRCH_ITEM_MOTH_STCK_INF']
+        elif p_end[6:8] == '03':
+            return 'task_SP_RCU_MOTH_MDA_CUST_D3_SMR'
+        elif p_end[6:8] == '14':
+            return 'task_SP_RCU_MOTH_MDA_CUST_SMR'
 
-    task_SP_RAR_REAL_SWRT_DTL = PythonOperator(
-        task_id="task_SP_RAR_REAL_SWRT_DTL",
+    task_SP_ROD_CUST_PET_GRD_INF = PythonOperator(
+        task_id="task_SP_ROD_CUST_PET_GRD_INF",
         python_callable=execute_procedure,
-        op_args=["SP_RAR_REAL_SWRT_DTL", p_start, p_end],
-        trigger_rule="all_done"
+        op_args=["SP_ROD_CUST_PET_GRD_INF", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
     )
 
-    task_SP_RAR_REAL_SWRT_ONLN_DTL = PythonOperator(
-        task_id="task_SP_RAR_REAL_SWRT_ONLN_DTL",
+    task_SP_RCU_HMALL_CUST_GRD_DTL = PythonOperator(
+        task_id="task_SP_RCU_HMALL_CUST_GRD_DTL",
         python_callable=execute_procedure,
-        op_args=["SP_RAR_REAL_SWRT_ONLN_DTL", p_start, p_end],
-        trigger_rule="all_done"
+        op_args=["SP_RCU_HMALL_CUST_GRD_DTL", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
     )
 
-    task_SP_DAILY_PRCDR_BAK = PythonOperator(
-        task_id="task_SP_DAILY_PRCDR_BAK",
+    task_SP_RCU_GGC_MOTH_SMR = PythonOperator(
+        task_id="SP_RCU_GGC_MOTH_SMR",
         python_callable=execute_procedure,
-        op_args=["SP_DAILY_PRCDR_BAK", p_start, p_end],
-        trigger_rule="all_done"
+        op_args=["SP_RCU_GGC_MOTH_SMR", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
     )
 
-    task_SP_RAR_REAL_SWRT_DTL >> task_SP_RAR_REAL_SWRT_ONLN_DTL >> task_SP_DAILY_PRCDR_BAK
+    task_SP_BCU_CUST_MST_UPDATE = PythonOperator(
+        task_id="task_SP_BCU_CUST_MST_UPDATE",
+        python_callable=execute_procedure,
+        op_args=["SP_BCU_CUST_MST_UPDATE", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_PCU_CUST_AGR_MOTH_FCT_02 = PythonOperator(
+        task_id="task_SP_PCU_CUST_AGR_MOTH_FCT_02",
+        python_callable=execute_procedure,
+        op_args=["SP_PCU_CUST_AGR_MOTH_FCT_01", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_PCU_CUST_AGR_MOTH_FCT_03 = PythonOperator(
+        task_id="task_SP_PCU_CUST_AGR_MOTH_FCT_03",
+        python_callable=execute_procedure,
+        op_args=["SP_PCU_CUST_AGR_MOTH_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RCU_CRM_MOTH_KPI_FCT = PythonOperator(
+        task_id="task_SP_RCU_CRM_MOTH_KPI_FCT",
+        python_callable=execute_procedure,
+        op_args=["SP_RCU_CRM_MOTH_KPI_FCT", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RCU_CUST_BUY_CHRTR_MOTH_INF = PythonOperator(
+        task_id="task_SP_RCU_CUST_BUY_CHRTR_MOTH_INF",
+        python_callable=execute_procedure,
+        op_args=["SP_RCU_CUST_BUY_CHRTR_MOTH_INF", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_COPY_STTC = PythonOperator(
+        task_id="task_SP_COPY_STTC",
+        python_callable=execute_procedure,
+        op_args=["SP_COPY_STTC", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RAR_CTPF_RATE_DTL = PythonOperator(
+        task_id="task_SP_RAR_CTPF_RATE_DTL",
+        python_callable=execute_procedure,
+        op_args=["SP_RAR_CTPF_RATE_DTL", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RAR_CTPF_RATE_ETC_DTL = PythonOperator(
+        task_id="task_SP_RAR_CTPF_RATE_ETC_DTL",
+        python_callable=execute_procedure,
+        op_args=["SP_RAR_CTPF_RATE_ETC_DTL", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RAR_CTPF_RATE_HMALL_DTL = PythonOperator(
+        task_id="task_SP_RAR_CTPF_RATE_HMALL_DTL",
+        python_callable=execute_procedure,
+        op_args=["SP_RAR_CTPF_RATE_HMALL_DTL", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RAR_BRND_CTPF_RATE_DTL = PythonOperator(
+        task_id="task_SP_RAR_BRND_CTPF_RATE_DTL",
+        python_callable=execute_procedure,
+        op_args=["SP_RAR_BRND_CTPF_RATE_DTL", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RAR_BRND_CTPF_RATE_ETC_DTL = PythonOperator(
+        task_id="task_SP_RAR_BRND_CTPF_RATE_ETC_DTL",
+        python_callable=execute_procedure,
+        op_args=["SP_RAR_BRND_CTPF_RATE_ETC_DTL", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RPS_DRCT_PRCH_LOSS_DTL = PythonOperator(
+        task_id="task_SP_RPS_DRCT_PRCH_LOSS_DTL",
+        python_callable=execute_procedure,
+        op_args=["SP_RPS_DRCT_PRCH_LOSS_DTL", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RAR_EXP_SWRT_HMALL_DTL = PythonOperator(
+        task_id="task_SP_RAR_EXP_SWRT_HMALL_DTL",
+        python_callable=execute_procedure,
+        op_args=["SP_RAR_EXP_SWRT_HMALL_DTL", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RAR_VEN_CNTB_RATE_SMR = PythonOperator(
+        task_id="task_SP_RAR_VEN_CNTB_RATE_SMR",
+        python_callable=execute_procedure,
+        op_args=["SP_RAR_VEN_CNTB_RATE_SMR", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RMA_WINT_INSM_CMISR_INF = PythonOperator(
+        task_id="task_SP_RMA_WINT_INSM_CMISR_INF",
+        python_callable=execute_procedure,
+        op_args=["SP_RMA_WINT_INSM_CMISR_INF", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RPD_DPRCH_ITEM_MOTH_STCK_INF = PythonOperator(
+        task_id="task_SP_RPD_DPRCH_ITEM_MOTH_STCK_INF",
+        python_callable=execute_procedure,
+        op_args=["SP_RPD_DPRCH_ITEM_MOTH_STCK_INF", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RIA_KWRD_PGM_ACHV_RATE_SMR = PythonOperator(
+        task_id="task_SP_RIA_KWRD_PGM_ACHV_RATE_SMR",
+        python_callable=execute_procedure,
+        op_args=["SP_RIA_KWRD_PGM_ACHV_RATE_SMR", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RCU_MOTH_MDA_CUST_D3_SMR = PythonOperator(
+        task_id="task_SP_RCU_MOTH_MDA_CUST_D3_SMR",
+        python_callable=execute_procedure,
+        op_args=["SP_RCU_MOTH_MDA_CUST_D3_SMR", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_PCU_CUST_ANAL_FCT_UPDT = PythonOperator(
+        task_id="task_SP_PCU_CUST_ANAL_FCT_UPDT",
+        python_callable=execute_procedure,
+        op_args=["SP_PCU_CUST_ANAL_FCT_UPDT", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_RCU_MOTH_MDA_CUST_SMR = PythonOperator(
+        task_id="task_SP_RCU_MOTH_MDA_CUST_SMR",
+        python_callable=execute_procedure,
+        op_args=["SP_RCU_MOTH_MDA_CUST_SMR", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_ACCLN_SALE_DTL = PythonOperator(
+        task_id="task_SP_ACCLN_SALE_DTL",
+        python_callable=execute_procedure,
+        op_args=["SP_ACCLN_SALE_DTL", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="none_skipped"
+    )
+
+    # 해당 프로시저는 통합테스트때 테스트
+    task_SP_DAU_SMS_DELETE = PythonOperator(
+        task_id="task_SP_DAU_SMS_DELETE",
+        python_callable=execute_procedure,
+        op_args=["SP_DAU_SMS_DELETE"], # 비활성화
+        trigger_rule="none_skipped"
+    )
+
+    task_SP_HDHS_INSU_DELETE = PythonOperator(
+        task_id="task_SP_HDHS_INSU_DELETE",
+        python_callable=execute_procedure,
+        op_args=["SP_HDHS_INSU_DELETE", p_start, p_end],
+        trigger_rule="none_skipped"
+    )
+
+    check_monthly(p_end) >> [task_SP_ROD_CUST_PET_GRD_INF, task_SP_RCU_HMALL_CUST_GRD_DTL, task_SP_DAU_SMS_DELETE, \
+    task_SP_COPY_STTC, task_SP_RPD_DPRCH_ITEM_MOTH_STCK_INF, task_SP_RCU_MOTH_MDA_CUST_D3_SMR, task_SP_RCU_MOTH_MDA_CUST_SMR]
+
+    task_SP_RCU_HMALL_CUST_GRD_DTL >> task_SP_RCU_GGC_MOTH_SMR >> task_SP_BCU_CUST_MST_UPDATE >> task_SP_PCU_CUST_AGR_MOTH_FCT_02 >> task_SP_PCU_CUST_AGR_MOTH_FCT_03
+
+    [task_SP_ROD_CUST_PET_GRD_INF, task_SP_PCU_CUST_AGR_MOTH_FCT_03] >> task_SP_RCU_CRM_MOTH_KPI_FCT >> \
+    task_SP_RCU_CUST_BUY_CHRTR_MOTH_INF
+
+    task_SP_DAU_SMS_DELETE >> task_SP_HDHS_INSU_DELETE
+
+    task_SP_COPY_STTC >> task_SP_RAR_CTPF_RATE_DTL >> task_SP_RAR_CTPF_RATE_ETC_DTL >> task_SP_RAR_CTPF_RATE_HMALL_DTL >> \
+    task_SP_RAR_BRND_CTPF_RATE_DTL >> task_SP_RAR_BRND_CTPF_RATE_ETC_DTL >> task_SP_RPS_DRCT_PRCH_LOSS_DTL >> \
+    task_SP_RAR_EXP_SWRT_HMALL_DTL >> task_SP_RAR_VEN_CNTB_RATE_SMR >> task_SP_RMA_WINT_INSM_CMISR_INF
+
+    task_SP_RPD_DPRCH_ITEM_MOTH_STCK_INF >> task_SP_RIA_KWRD_PGM_ACHV_RATE_SMR
+
+    task_SP_RCU_MOTH_MDA_CUST_D3_SMR >> task_SP_PCU_CUST_ANAL_FCT_UPDT
+
+    task_SP_RCU_MOTH_MDA_CUST_SMR >> task_SP_ACCLN_SALE_DTL
+
+
+
+
+
+
+
+
+
+
+
+
+

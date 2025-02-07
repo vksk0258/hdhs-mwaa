@@ -1,10 +1,14 @@
 from airflow import DAG
-from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
+from datetime import timedelta
+import pendulum
 
 with DAG(
     dag_id="dag_DD01_0710_ON_DEMAND_02",
-    schedule_interval=None,
+    schedule_interval='10 7 * * *',
+    start_date=pendulum.datetime(2025, 2, 5, tz="Asia/Seoul"),
+    dagrun_timeout=timedelta(minutes=4000),
     tags=["현대홈쇼핑","100_COM"]
 ) as dag:
     task_ETL_SCHEDULE_c_01 = etlScheduleUpdateOperator(

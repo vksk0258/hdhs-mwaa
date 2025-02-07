@@ -1,11 +1,14 @@
 from airflow import DAG
-from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
-
+from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
+from datetime import timedelta
+import pendulum
 
 with DAG(
     dag_id="dag_DD01_1200_CP_SMR_MST_01",
-    schedule_interval=None,
+    schedule_interval='30 10 * * *',
+    start_date=pendulum.datetime(2025, 2, 5, tz="Asia/Seoul"),
+    dagrun_timeout=timedelta(minutes=4000),
     tags=["현대홈쇼핑","100_COM"]
 ) as dag:
     task_ETL_SCHEDULE_c_01 = etlScheduleUpdateOperator(
@@ -14,7 +17,7 @@ with DAG(
 
     trigger_dag_CDC_MART_CP_SMR_MST = TriggerDagRunOperator(
         task_id='trigger_dag_CDC_MART_CP_SMR_MST',
-        trigger_dag_id='dag_CDC_MART_CP_SMR_MST ',
+        trigger_dag_id='dag_CDC_MART_CP_SMR_MST',
         reset_dag_run=True,         # 이미 수행된 dag여도 수행 할 것인지
         wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
         poke_interval=60,

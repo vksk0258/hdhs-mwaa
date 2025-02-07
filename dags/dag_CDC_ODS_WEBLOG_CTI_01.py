@@ -31,7 +31,7 @@ def s3_key_exists(bucket, key):
 
 with DAG(
     dag_id="dag_CDC_ODS_WEBLOG_CTI_01",
-    schedule_interval='10 3 * * *',
+    schedule_interval=None,
     start_date=pendulum.datetime(2025, 1, 2, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
     tags=["현대홈쇼핑", "DD01_0010_DAILY_MAIN", "CTI", 'Flat File']
