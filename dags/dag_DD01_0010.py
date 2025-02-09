@@ -3,12 +3,15 @@ from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from datetime import timedelta
 import pendulum
 
+parent_dir = "100_COM"
+
 with DAG(
     dag_id="dag_DD01_0010",
     schedule_interval='10 0 * * *',
-    start_date=pendulum.datetime(2025, 2, 6, tz="Asia/Seoul"),
+    start_date=pendulum.datetime(2025, 2, 10, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
-    tags=["현대홈쇼핑"]
+    catchup=False,
+    tags=[parent_dir, "Scheduled","현대홈쇼핑"]
 ) as dag:
     trigger_dag_DD01_0010_DAILY_MAIN_01 = TriggerDagRunOperator(
         task_id='trigger_dag_DD01_0010_DAILY_MAIN_01',

@@ -6,11 +6,12 @@ import pandas as pd
 import boto3
 import json
 
+parent_dir = "100_COM"
 
 with DAG(
     dag_id="dag_HH01_00_ODS_HOURLY_HES_01",
     schedule_interval=None,
-    tags=["현대홈쇼핑","100_COM"]
+    tags=[parent_dir,"현대홈쇼핑"]
 ) as dag:
     @task(task_id="python_task_1")
     def print_context(some_input):

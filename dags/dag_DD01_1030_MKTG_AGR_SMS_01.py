@@ -4,12 +4,15 @@ from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
 from datetime import timedelta
 import pendulum
 
+parent_dir = "100_COM"
+
 with DAG(
     dag_id="dag_DD01_1030_MKTG_AGR_SMS_01",
     schedule_interval='30 10 * * *',
-    start_date=pendulum.datetime(2025, 2, 5, tz="Asia/Seoul"),
+    start_date=pendulum.datetime(2025, 2, 10, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
-    tags=["현대홈쇼핑","100_COM"]
+    catchup=False,
+    tags=[parent_dir,"Scheduled","현대홈쇼핑"]
 ) as dag:
     task_ETL_SCHEDULE_c_01 = etlScheduleUpdateOperator(
         task_id="task_ETL_SCHEDULE_c_01"

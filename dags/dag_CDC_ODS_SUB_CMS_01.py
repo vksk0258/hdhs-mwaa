@@ -150,7 +150,7 @@ with DAG(
         not_null_columns = dagent_primary_keys,
         p_start=params.get("$$P_START"),
         p_end=params.get("$$P_END"),
-        batch_size = 100000,
+        batch_size = 50000,
         retries=10,
         retry_delay=datetime.timedelta(seconds=10)
     )

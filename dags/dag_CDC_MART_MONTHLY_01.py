@@ -10,7 +10,7 @@ import json
 # S3 parameters
 s3 = boto3.client('s3')
 bucket_name = "hdhs-dw-mwaa-s3"
-key = "param/wf_DD01_0030_DAILY_MAIN_01.json"
+key = "param/wf_DD01_0030_MONTHLY_01.json"
 response = s3.get_object(Bucket=bucket_name, Key=key)
 params = json.load(response['Body'])
 

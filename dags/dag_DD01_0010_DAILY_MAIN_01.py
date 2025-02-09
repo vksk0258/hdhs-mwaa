@@ -3,13 +3,15 @@ from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
 import pendulum
 
+parent_dir = "100_COM"
+parent_dag = "dag_DD01_0010"
 
 # DAG 정의
 with DAG(
         dag_id="dag_DD01_0010_DAILY_MAIN_01",
         schedule_interval=None,
         catchup=False,
-        tags=["현대홈쇼핑","dag_DD01_0010","Daily"]
+        tags=[parent_dir, parent_dag, "현대홈쇼핑"]
 ) as dag:
     task_ETL_SCHEDULE_c_01 = etlScheduleUpdateOperator(
         task_id="task_ETL_SCHEDULE_c_01"

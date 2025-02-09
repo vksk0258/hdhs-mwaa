@@ -1,12 +1,13 @@
 from airflow import DAG
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
-
+parent_dir = "100_COM"
+parent_dag = "dag_DD01_0010_MONTHLY_01"
 
 with DAG(
     dag_id="dag_DD01_0010_PHYS_DIST_01",
     schedule_interval=None,
-    tags=["현대홈쇼핑","DD01_0010_DAILY_MAIN"]
+    tags=[parent_dir, parent_dag, "현대홈쇼핑"]
 ) as dag:
     # 타겟이 MSSQL이라 주석처리
     # trigger_dag_CDC_ETC_PHYS_DIST_01 = TriggerDagRunOperator(

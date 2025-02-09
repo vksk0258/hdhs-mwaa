@@ -2,11 +2,13 @@ from airflow import DAG
 from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
+parent_dir = "100_COM"
+parent_dag = "dag_DD01_0010"
 
 with DAG(
     dag_id="dag_DD01_0010_MONTHLY_01",
     schedule_interval=None,
-    tags=["현대홈쇼핑","100_COM"]
+    tags=[parent_dir, parent_dag]
 ) as dag:
     task_ETL_SCHEDULE_c_01 = etlScheduleUpdateOperator(
         task_id="task_ETL_SCHEDULE_c_01"
