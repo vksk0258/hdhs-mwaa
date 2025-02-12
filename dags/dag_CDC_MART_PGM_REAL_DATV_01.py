@@ -158,10 +158,10 @@ with DAG(
         trigger_rule="all_done"
     )
 
-    task_SP_BITM_SELL_ETC_EXP_ORD_FOR_SALE_NEWS_D001 = PythonOperator(
-        task_id="task_SP_BITM_SELL_ETC_EXP_ORD_FOR_SALE_NEWS_D001",
+    task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D001 = PythonOperator(
+        task_id="task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D001",
         python_callable=execute_procedure_dycl,
-        op_args=["SP_BITM_SELL_ETC_EXP_ORD_FOR_SALE_NEWS", p_start, p_end, 'conn_snowflake_etl'],
+        op_args=["SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS", p_start, p_end, 'conn_snowflake_etl'],
         provide_context=True,
         trigger_rule="all_done"
     )
@@ -281,9 +281,9 @@ with DAG(
     task_SP_RIA_DTBRC_ORD_REAL_FCT_D028 >> \
     task_SP_RIA_DTBRC_ORD_REAL_FCT_D056 >> \
     task_SP_RIA_DTBRC_ORD_REAL_FCT_D084 >> \
-    task_SP_BITM_SELL_ETC_EXP_ORD_FOR_SALE_NEWS_D001
+    task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D001
 
-    [task_SP_RAR_BITM_SELL_ETC_REAL_SMR_3_D084, task_SP_BITM_SELL_ETC_EXP_ORD_FOR_SALE_NEWS_D001] >> \
+    [task_SP_RAR_BITM_SELL_ETC_REAL_SMR_3_D084, task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D001] >> \
     task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_F015 >> \
     task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D028 >> \
     task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D056 >> \

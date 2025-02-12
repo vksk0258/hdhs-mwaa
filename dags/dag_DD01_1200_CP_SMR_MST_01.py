@@ -8,8 +8,8 @@ parent_dir = "100_COM"
 
 with DAG(
     dag_id="dag_DD01_1200_CP_SMR_MST_01",
-    schedule_interval='30 10 * * *',
-    start_date=pendulum.datetime(2025, 2, 10, tz="Asia/Seoul"),
+    schedule_interval='0 12 * * *',
+    start_date=pendulum.datetime(2025, 2, 9, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
     catchup=False,
     tags=[parent_dir,"Scheduled","현대홈쇼핑"]
@@ -18,9 +18,9 @@ with DAG(
         task_id="task_ETL_SCHEDULE_c_01"
     )
 
-    trigger_dag_CDC_MART_CP_SMR_MST = TriggerDagRunOperator(
-        task_id='trigger_dag_CDC_MART_CP_SMR_MST',
-        trigger_dag_id='dag_CDC_MART_CP_SMR_MST',
+    trigger_dag_CDC_MART_CAMP_CP_SMR_MST = TriggerDagRunOperator(
+        task_id='trigger_dag_CDC_MART_CAMP_CP_SMR_MST',
+        trigger_dag_id='dag_CDC_MART_CAMP_CP_SMR_MST',
         reset_dag_run=True,         # 이미 수행된 dag여도 수행 할 것인지
         wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
         poke_interval=60,
@@ -28,4 +28,4 @@ with DAG(
         trigger_rule="all_done"
     )
 
-    task_ETL_SCHEDULE_c_01 >> trigger_dag_CDC_MART_CP_SMR_MST
+    task_ETL_SCHEDULE_c_01 >> trigger_dag_CDC_MART_CAMP_CP_SMR_MST
