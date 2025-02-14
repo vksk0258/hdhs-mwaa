@@ -199,6 +199,7 @@ with DAG(
         snowflake_conn_id="conn_snow_load",
         informix_table = "HAGENT",
         snowflake_table = "ODS_CMS.DWCT_HAGENT",
+        columns = hagent_columns,
         pk_columns = hagent_primary_keys,
         condition_query=hagent_condition_query,
         batch_size = 200000,
