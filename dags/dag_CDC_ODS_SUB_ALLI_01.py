@@ -2,7 +2,7 @@ from airflow import DAG
 from airflow.decorators import task
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-from operators.postgresql_to_s3_incremental_load_operator import PostgresqlToS3IncrementalLoadOperator
+from operators.postgresql_to_snowflake_merge_operator import PostgresqlToS3IncrementalLoadOperator
 import datetime
 import pandas as pd
 import boto3

@@ -16,7 +16,7 @@ with DAG(
 
     task_CU_ARS_LDIN_MST_CRYPT_load = OracleToS3InitialLoadOperator(
         task_id = "task_CU_ARS_LDIN_MST_CRYPT_load",
-        conn_id = "conn_oracle_main",
+        conn_id = "conn_oracle_OCI",
         table = "HDHS_CU.CU_ARS_LDIN_MST_CRYPT",
         columns = ["*"],
         batch_size = 1000000,
@@ -56,7 +56,7 @@ with DAG(
 
     task_OD_STLM_INF_CRYPT_load = OracleToS3InitialLoadOperator(
         task_id = "task_OD_STLM_INF_CRYPT_load",
-        conn_id = "conn_oracle_main",
+        conn_id = "conn_oracle_OCI",
         table = "HDHS_OD.OD_STLM_INF_CRYPT",
         columns = ["*"],
         batch_size=1000000,

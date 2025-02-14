@@ -54,6 +54,9 @@ TMS_SITE_USER_LIST_columns = [
     "REG_DATE", "UPT_DATE"
 ]
 
+TMS_CAMP_SCHD_INFO_columns = ["POST_ID", "SERVER_ID", "CHANNEL_TYPE", "MSG_ID", "JOB_STATUS", "CONTENT_CONF", "SPOOL_CONF", "OPEN_CHECK", "CLICK_CHECK", "SAFEMAIL_YN", "QUE_CLOSE_DATE", "TRACKING_CLOSE", "START_DATE", "END_DATE", "STOP_DATE", "RESTART_DATE", "RESTART_END_DATE", "ERR_START_DATE", "ERR_END_DATE", "TARGET_CNT", "PUSHED_CNT", "FILTER_CNT", "FAIL_CNT", "OPEN_CNT", "CLICK_CNT", "SAFEMAIL_STATE", "DIVIDE_SEND_USE_YN", "DIVIDE_CNT", "DIVIDE_MINUTE", "DIVIDE_SCHD_SEQ", "LAST_MEMBER_ID", "SPOOL_READ_COUNT", "APPROVAL_ID", "APPROVAL_DATE", "APPROVAL_REQ_ID", "APPROVAL_REQ_DATE", "REG_ID", "SWITCHED_CNT", "REQ_DATE", "SAFEMAIL_REGISTER_D", "REG_DATE", "UPT_DATE", "SAFEMAIL_CONTENT", "IF_ID", "RECOVERY_FLAG"]
+
+
 # DAG 정의
 with DAG(
         dag_id="dag_CDC_ODS_SUB_TMS_01",  # DAG의 고유 식별자
@@ -82,7 +85,7 @@ with DAG(
         oracle_conn_id = "conn_oracle_OCI",
         snowflake_conn_id="conn_snow_load",
         oracle_table="ODS_TMS.TMS_APP_USER_LIST",
-        snowflake_table="ODS_TMS.TMS_APP_USER_LIST",
+        snowflake_table="ODS_TMS.TMS_APP_USER_LIST_TEMP",
         columns = TMS_APP_USER_LIST_columns,
         pk_columns = ["APP_GRP_ID", "CUST_ID"],
         condition_query = TMS_APP_USER_LIST_query,
@@ -96,7 +99,7 @@ with DAG(
         oracle_conn_id = "conn_oracle_OCI",
         snowflake_conn_id="conn_snow_load",
         oracle_table="ODS_TMS.TMS_SITE_USER_LIST",
-        snowflake_table="ODS_TMS.TMS_SITE_USER_LIST",
+        snowflake_table="ODS_TMS.TMS_SITE_USER_LIST_TEMP",
         columns = TMS_SITE_USER_LIST_columns,
         pk_columns = ["SITE_ID", "CUST_ID"],
         condition_query = TMS_APP_USER_LIST_query,

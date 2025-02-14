@@ -3,6 +3,7 @@ from airflow.providers.oracle.hooks.oracle import OracleHook
 from airflow.providers.jdbc.hooks.jdbc import JdbcHook
 from airflow.providers.odbc.hooks.odbc import OdbcHook
 from airflow.operators.python import PythonOperator
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.models import Variable
 import os
 import pandas as pd
@@ -11,9 +12,10 @@ import pendulum
 
 informix_odbc = Variable.get("informix_odbc")
 informix_jdbc = Variable.get("informix_jdbc")
+informix_jdbc_jc = Variable.get("informix_jdbc_jc")
 query = Variable.get("query")
 def jdbc_conn_test():
-    jdbc_hook = JdbcHook(jdbc_conn_id='conn_informix_locus1', driver_path=informix_jdbc,driver_class='com.informix.jdbc.IfxDriver')
+    jdbc_hook = JdbcHook(jdbc_conn_id='conn_informix_locus1', driver_path=informix_jdbc,driver_class=informix_jdbc_jc)
     connection = jdbc_hook.get_conn()
     cursor = connection.cursor()
     cursor.execute(query)
@@ -22,15 +24,6 @@ def jdbc_conn_test():
     cursor.close()
     connection.close()
     return data
-
-def odbc_conn_test():
-    odbc_hook = OdbcHook(odbc_conn_id='conn_informix_locus1_odbc',driver=informix_odbc)
-    connection = odbc_hook.get_conn()
-    cursor = connection.cursor()
-    print(cursor)
-    cursor.close()
-    connection.close()
-    return
 
 
 with DAG(
@@ -43,9 +36,5 @@ with DAG(
         python_callable=jdbc_conn_test
     )
 
-    odbc_conn_test_task = PythonOperator(
-        task_id='odbc_conn_test_task',
-        python_callable=odbc_conn_test
-    )
 
-    [jdbc_conn_test_task,odbc_conn_test_task]
+    jdbc_conn_test_task
