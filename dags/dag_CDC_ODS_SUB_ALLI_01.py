@@ -2,7 +2,7 @@ from airflow import DAG
 from airflow.decorators import task
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-from operators.postgresql_to_snowflake_merge_operator import PostgresqlToS3IncrementalLoadOperator
+from operators.postgresql_to_snowflake_merge_operator import PostgresqlToSnowflakeMergeOperator
 import datetime
 import pandas as pd
 import boto3
@@ -17,6 +17,10 @@ bucket_name = "hdhs-dw-mwaa-s3"
 key = "param/wf_DD01_0030_DAILY_MAIN_01.json"
 response = s3.get_object(Bucket=bucket_name, Key=key)
 params = json.load(response['Body'])
+
+# Parse time parameters
+p_start = params.get('$$P_START')
+p_end = params.get('$$P_END')
 
 postgres_hook = PostgresHook(postgres_conn_id='conn_postgres_hdhs_reading')
 snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
@@ -48,33 +52,39 @@ with DAG(
                 print("Truncate 완료")
 
         engine = snowflake_hook.get_sqlalchemy_engine()
-        batch_size = 50000
+        batch_size = 200000
         for batch_df in split_dataframe(df, batch_size):
             batch_df.to_sql("AM_ALML_MD_VEN_INTL_SETUP_DTL", con=engine, schema="ODS_ALLI", if_exists='append', index=False)
             print("적재완료")
 
 
-    task_AM_ALML_INTL_EXCP_SETUP_DTL_load = PostgresqlToS3IncrementalLoadOperator(
+    task_AM_ALML_INTL_EXCP_SETUP_DTL_load = PostgresqlToSnowflakeMergeOperator(
         task_id="task_AM_ALML_INTL_EXCP_SETUP_DTL_load",
-        conn_id="conn_postgres_hdhs_reading",
-        table="ODS_ALLI.AM_ALML_INTL_EXCP_SETUP_DTL",
+        postgresql_conn_id="conn_postgres_hdhs_reading",
+        snowflake_conn_id="conn_snow_load",
+        postgresql_table="ODS_ALLI.AM_ALML_INTL_EXCP_SETUP_DTL",
+        snowflake_table="ODS_ALLI.AM_ALML_INTL_EXCP_SETUP_DTL_TEMP",
+        p_start = p_start,
+        p_end = p_end,
         columns=am_alml_intl_excp_setup_dtl_columns,
-        p_start=params.get("$$P_START"),
-        p_end=params.get("$$P_END"),
-        batch_size=1000000,
+        pk_columns=["ALML_CD", "ITEM_INTL_GBCD", "ITEM_INTL_PTC_CD", "MD_CD", "VEN2_CD", "VEN_CD"],
+        batch_size=200000,
         retries=10,
         retry_delay=datetime.timedelta(seconds=10)
     )
 
 
-    task_AM_ALML_ITEM_INTL_DTL_load = PostgresqlToS3IncrementalLoadOperator(
+    task_AM_ALML_ITEM_INTL_DTL_load = PostgresqlToSnowflakeMergeOperator(
         task_id="task_AM_ALML_ITEM_INTL_DTL_load",
-        conn_id="conn_postgres_hdhs_reading",
-        table="ODS_ALLI.AM_ALML_ITEM_INTL_DTL",
+        postgresql_conn_id="conn_postgres_hdhs_reading",
+        snowflake_conn_id="conn_snow_load",
+        postgresql_table="ODS_ALLI.AM_ALML_ITEM_INTL_DTL",
+        snowflake_table="ODS_ALLI.AM_ALML_ITEM_INTL_DTL_TEMP",
+        p_start=p_start,
+        p_end=p_end,
         columns=am_alml_item_intl_dtl_columns,
-        p_start=params.get("$$P_START"),
-        p_end=params.get("$$P_END"),
-        batch_size=1000000,
+        pk_columns=["ALML_CD", "SLITM_CD"],
+        batch_size=200000,
         retries=10,
         retry_delay=datetime.timedelta(seconds=10)
     )

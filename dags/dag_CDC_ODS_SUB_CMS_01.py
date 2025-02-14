@@ -1,5 +1,5 @@
 from airflow import DAG
-from informixdb_to_s3_incremental_load_operator import InformixdbToS3IncrementalLoadOperator
+from operators.informix_to_s3_incremental_load_operator import InformixToS3IncrementalLoadOperator
 from airflow.operators.python import PythonOperator
 import json
 import boto3
@@ -142,7 +142,7 @@ with DAG(
         tags=["현대홈쇼핑","DD01_0030_DAILY_MAIN"]
 ) as dag:
 
-    task_DWCT_DAGENT_c_01 = InformixdbToS3IncrementalLoadOperator(
+    task_DWCT_DAGENT_c_01 = InformixToS3IncrementalLoadOperator(
         task_id="task_DWCT_DAGENT_c_01",
         conn_id = "conn_informix_locus1",
         table = "ODS_CMS.DWCT_DAGENT",
@@ -155,7 +155,7 @@ with DAG(
         retry_delay=datetime.timedelta(seconds=10)
     )
 
-    task_DWCT_HAGENT_c_01 = InformixdbToS3IncrementalLoadOperator(
+    task_DWCT_HAGENT_c_01 = InformixToS3IncrementalLoadOperator(
         task_id = "task_DWCT_HAGENT_c_01",
         conn_id = "conn_informix_locus1",
         table = "ODS_CMS.DWCT_HAGENT",

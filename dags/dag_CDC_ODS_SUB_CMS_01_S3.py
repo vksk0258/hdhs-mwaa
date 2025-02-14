@@ -1,6 +1,6 @@
 from airflow import DAG
 from airflow.providers.jdbc.hooks.jdbc import JdbcHook
-from informixdb_to_s3_incremental_load_operator import InformixdbToS3IncrementalLoadOperator
+from informix_to_s3_incremental_load_operator import InformixToS3IncrementalLoadOperator
 from airflow.decorators import task
 from airflow.models import Variable
 from datetime import timedelta
