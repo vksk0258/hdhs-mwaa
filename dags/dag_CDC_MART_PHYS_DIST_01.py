@@ -64,14 +64,6 @@ with DAG(
         trigger_rule="all_done"
     )
 
-
-    task_SP_PCU_CUST_ANAL_FCT = PythonOperator(
-        task_id="task_SP_PCU_CUST_ANAL_FCT",
-        python_callable=execute_procedure,
-        op_args=["SP_PCU_CUST_ANAL_FCT", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
-    )
-
     task_SP_PCU_CUST_ANAL_FCT_01 = PythonOperator(
         task_id="task_SP_PCU_CUST_ANAL_FCT_01",
         python_callable=execute_procedure,
@@ -120,7 +112,6 @@ with DAG(
     task_SP_PAR_INSU_ARLT_DLU_FCT >>\
     task_SP_PAR_SO_ARLT_DLU_FCT >>\
     task_SP_RIA_ITEM_ANAL_FCT >>\
-    task_SP_PCU_CUST_ANAL_FCT >>\
     task_SP_PCU_CUST_ANAL_FCT_01 >>\
     task_SP_PCU_CUST_ANAL_FCT_02 >>\
     task_SP_PMA_COPN_ANAL_DLU_FCT_01 >>\

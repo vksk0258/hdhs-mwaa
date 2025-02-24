@@ -7,7 +7,7 @@ parent_dir = "100_COM"
 
 with DAG(
     dag_id="dag_DD01_0010",
-    schedule_interval='10 0 * * *',
+    schedule_interval='0 2 * * *',
     start_date=pendulum.datetime(2025, 2, 10, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
     catchup=False,

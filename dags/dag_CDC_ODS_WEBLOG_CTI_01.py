@@ -31,8 +31,8 @@ def s3_key_exists(bucket, key):
 
 with DAG(
     dag_id="dag_CDC_ODS_WEBLOG_CTI_01",
-    schedule_interval=None,
-    start_date=pendulum.datetime(2025, 1, 2, tz="Asia/Seoul"),
+    schedule_interval='30 0 * * *',
+    start_date=pendulum.datetime(2025, 2, 23, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
     tags=["현대홈쇼핑", "DD01_0010_DAILY_MAIN", "CTI", 'Flat File']
 ) as dag:
@@ -200,7 +200,7 @@ with DAG(
 
             os.makedirs(TMP_DIR, exist_ok=True)
             df.to_parquet(file_name, engine='pyarrow', index=False)
-            s3_client.upload_file(file_name, S3_BUCKET_NAME, f"dw/{schema}/{table_name}/{date_folder}/{file_name.split('/')[-1]}")
+            s3_client.upload_file(file_name, S3_BUCKET_NAME, f"dw/mwaa_etl_load/{schema}/{table_name}/{date_folder}/{file_name.split('/')[-1]}")
             os.remove(file_name)
         else:
             print(f"No data to process for table {schema}.{table_name} in the given time window.")

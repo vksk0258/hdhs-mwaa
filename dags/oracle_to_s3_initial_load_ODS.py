@@ -1,9 +1,11 @@
 from airflow import DAG
 from airflow.providers.oracle.hooks.oracle import OracleHook
+from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.operators.python import PythonOperator
 import datetime
 from airflow.models import Variable
 import os
+import numpy as np
 import pandas as pd
 import boto3
 import pendulum
@@ -17,14 +19,35 @@ TMP_DIR = "/tmp/oracle_initial"
 ORACLE_CONN_ID = "conn_oracle_H2O"
 
 BATCH_SIZE = 500000
+# TABLE_NAME_LIST = [
+#     "ODS_ALLI.AM_ALML_MD_VEN_INTL_SETUP_DTL",
+#     "ODS_ALLI.AM_ALML_INTL_EXCP_SETUP_DTL",
+#     "ODS_TMS.TMS_APP_DEVICE_LIST",
+#     "ODS_TMS.TMS_APP_USER_LIST",
+#     "ODS_TMS.TMS_SITE_USER_LIST",
+#     "ODS_TMS.TMS_CAMP_CHN_INFO",
+#     "ODS_TMS.TMS_CAMP_SCHD_INFO",
+#     "ODS_TMS.TMS_CAMP_SEND_LIST_01",
+#     "ODS_TMS.TMS_CAMP_SEND_LIST_02",
+#     "ODS_TMS.TMS_CAMP_SEND_LIST_03",
+#     "ODS_TMS.TMS_CAMP_SEND_LIST_04",
+#     "ODS_TMS.TMS_CAMP_SEND_LIST_05",
+#     "ODS_TMS.TMS_CAMP_SEND_LIST_06",
+#     "ODS_TMS.TMS_CAMP_SEND_LIST_07",
+#     "ODS_TMS.TMS_CAMP_SEND_LIST_08",
+#     "ODS_TMS.TMS_CAMP_SEND_LIST_09",
+#     "ODS_TMS.TMS_CAMP_SEND_LIST_10",
+#     "ODS_TMS.TMS_CAMP_SEND_LIST_11",
+#     "ODS_TMS.TMS_CAMP_SEND_LIST_12",
+#     "ODS_INSU.B_PRE_DEAL_DB",
+#     "ODS_INSU.TB_CNTTMST",
+#     "ODS_INSU.TB_CNTTMST_HINS",
+#     "ODS_INSU.TB_CU_DORM_CMPL_REST"
+# ]
+
 TABLE_NAME_LIST = [
-    "ODS_ALLI.AM_ALML_MD_VEN_INTL_SETUP_DTL",
-    "ODS_ALLI.AM_ALML_INTL_EXCP_SETUP_DTL",
-    "ODS_TMS.TMS_APP_DEVICE_LIST",
-    "ODS_TMS.TMS_APP_USER_LIST",
-    "ODS_TMS.TMS_SITE_USER_LIST",
-    "ODS_TMS.TMS_CAMP_CHN_INFO",
-    "ODS_TMS.TMS_CAMP_SCHD_INFO",
+    "ODS_INSU.B_PRE_DEAL_DB",
+    "ODS_INSU.TB_CNTTMST",
     "ODS_TMS.TMS_CAMP_SEND_LIST_01",
     "ODS_TMS.TMS_CAMP_SEND_LIST_02",
     "ODS_TMS.TMS_CAMP_SEND_LIST_03",
@@ -37,10 +60,6 @@ TABLE_NAME_LIST = [
     "ODS_TMS.TMS_CAMP_SEND_LIST_10",
     "ODS_TMS.TMS_CAMP_SEND_LIST_11",
     "ODS_TMS.TMS_CAMP_SEND_LIST_12",
-    "ODS_INSU.B_PRE_DEAL_DB",
-    "ODS_INSU.TB_CNTTMST",
-    "ODS_INSU.TB_CNTTMST_HINS",
-    "ODS_INSU.TB_CU_DORM_CMPL_REST"
 ]
 
 def file_exists_in_s3(bucket_name, key):
@@ -58,7 +77,7 @@ def process_table(table_name, batch_size, tmp_dir, s3_bucket_name,**kwargs):
     oracle_hook = OracleHook(oracle_conn_id=ORACLE_CONN_ID, thick_mode=True, thick_mode_lib_dir=client_path)
 
     chunk_index = 1
-    s3_prefix = f"dw/mwaa_etl_load/{schema}/{table}/"
+    s3_prefix = f"dw/dms_full_load/{schema}/{table}/"
 
     while True:
         s3_key = f"{s3_prefix}LOAD{chunk_index:08d}.parquet"
@@ -90,13 +109,20 @@ def process_table(table_name, batch_size, tmp_dir, s3_bucket_name,**kwargs):
                 else x.isoformat() if isinstance(x, pd.Timestamp) else str(x)
             )
 
+        df.replace({np.nan: None}, inplace=True)
+
         file_name = f"{tmp_dir}/LOAD{chunk_index:08d}.parquet"
         df.to_parquet(file_name, engine='pyarrow', index=False)
         os.system(f"aws s3 cp {file_name} s3://{s3_bucket_name}/{s3_key}")
+        print(f"aws s3 cp {file_name} s3://{s3_bucket_name}/{s3_key}")
         os.remove(file_name)
         chunk_index += 1
 
     print("Processing complete for table:", table_name)
+    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
+    with snowflake_hook.get_conn() as conn:
+        print(f"CALL DW_LOAD_DB.CONFIG.PROC_INIT_COPY('DW_LOAD_DB', '{schema}', '{table}')")
+        conn.cursor().execute(f"CALL DW_LOAD_DB.CONFIG.PROC_INIT_COPY('DW_LOAD_DB', '{schema}', '{table}')")
 
 
 # DAG 정의

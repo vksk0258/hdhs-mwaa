@@ -8,8 +8,8 @@ parent_dir = "100_COM"
 
 with DAG(
     dag_id="dag_DD01_0710_ON_DEMAND_02",
-    schedule_interval='10 7 * * *',
-    start_date=pendulum.datetime(2025, 2, 10, tz="Asia/Seoul"),
+    schedule_interval='20 8 * * *',
+    start_date=pendulum.datetime(2025, 2, 20, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
     catchup=False,
     tags=[parent_dir,"Scheduled","현대홈쇼핑"]

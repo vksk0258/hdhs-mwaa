@@ -3,6 +3,7 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from common.common_call_procedure import execute_procedure, execute_procedure_dycl, log_etl_completion
 from datetime import datetime, timedelta
+import pendulum
 import boto3
 import json
 
@@ -18,7 +19,8 @@ p_end = params.get("$$P_END")
 
 with DAG(
     dag_id="dag_CDC_MART_CAMP_CP_SMR_MST",
-    schedule_interval=None,
+    schedule_interval='0 3 * * *',
+    start_date=pendulum.datetime(2025, 2, 20, tz="Asia/Seoul"),
     tags=["현대홈쇼핑","dag_DD01_1200_CP_SMR_MST_01"]
 ) as dag:
     task_SP_CP_SMR_MST = PythonOperator(

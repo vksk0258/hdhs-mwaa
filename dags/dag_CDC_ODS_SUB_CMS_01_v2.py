@@ -18,8 +18,6 @@ params = json.load(response['Body'])
 
 p_start = params.get("$$P_START")
 p_end = params.get("$$P_END")
-fm_p_start = f"{p_start[:4]}-{p_start[4:6]}-{p_start[6:]}"
-fm_p_end = f"{p_end[:4]}-{p_end[4:6]}-{p_end[6:]}"
 
 informix_jdbc = Variable.get("informix_jdbc")
 informix_jdbc_jc = Variable.get("informix_jdbc_jc")
@@ -78,28 +76,29 @@ hsplit_columns = [
 hsplit_primary_keys = ["ROW_DATE", "STARTTIME", "INTRVL", "ACD", "SPLIT", "I_ACWINTIME"]
 
 dagent_condition_query = f"""
-                WHERE ROW_DATE IS NOT NULL
-                AND ACD IS NOT NULL
-                AND SPLIT IS NOT NULL
-                AND EXTENSION IS NOT NULL
-                AND LOGID IS NOT NULL
-                AND LOC_ID IS NOT NULL
-                AND RSV_LEVEL IS NOT NULL
-                AND ROW_DATE >= DATE('{fm_p_start}') 
-                AND ROW_DATE <= DATE('{fm_p_end}')
+                 WHERE ROW_DATE IS NOT NULL
+                 AND ACD IS NOT NULL
+                 AND SPLIT IS NOT NULL
+                 AND EXTENSION IS NOT NULL
+                 AND LOGID IS NOT NULL
+                 AND LOC_ID IS NOT NULL
+                 AND RSV_LEVEL IS NOT NULL
+                 AND row_date >= TO_DATE('{p_start}','%Y%m%d')
+                 AND row_date <= TO_DATE('{p_end}','%Y%m%d')
 """
 
 hagent_condition_query = f"""
-                WHERE ROW_DATE IS NOT NULL
-                AND STARTTIME IS NOT NULL
-                AND INTRVL IS NOT NULL
-                AND ACD IS NOT NULL
-                AND SPLIT IS NOT NULL
-                AND EXTENSION IS NOT NULL
-                AND LOGID IS NOT NULL
-                AND RSV_LEVEL IS NOT NULL
-                AND ROW_DATE >= DATE('{fm_p_start}') 
-                AND ROW_DATE <= DATE('{fm_p_end}')
+                 WHERE ROW_DATE IS NOT NULL
+                 AND STARTTIME IS NOT NULL
+                 AND INTRVL IS NOT NULL
+                 AND ACD IS NOT NULL
+                 AND SPLIT IS NOT NULL
+                 AND EXTENSION IS NOT NULL
+                 AND LOGID IS NOT NULL
+                 AND LOC_ID IS NOT NULL
+                 AND RSV_LEVEL IS NOT NULL
+                 AND row_date >= TO_DATE('{p_start}','%Y%m%d')
+                 AND row_date <= TO_DATE('{p_end}','%Y%m%d')
             """
 def task_DWCT_HSPLIT_c_01 (table,columns, not_null_columns, **kwargs):
 
@@ -127,10 +126,22 @@ def task_DWCT_HSPLIT_c_01 (table,columns, not_null_columns, **kwargs):
             else x.isoformat() if isinstance(x, pd.Timestamp) else str(x)
         )
 
+
     snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
+    with snowflake_hook.get_conn() as snowflake_conn:
+        with snowflake_conn.cursor() as cursor:
+            truncate_query = f"""
+            truncate {table}
+            """
+            cursor.execute(truncate_query)
+            print("Truncate 완료")
+
+
     engine = snowflake_hook.get_sqlalchemy_engine()
 
-    df.to_sql(table, con=engine, if_exists='replace', index=False, chunksize=1000000)
+
+
+    df.to_sql(table, con=engine, if_exists='append', index=False, chunksize=200000)
 
 
     informixdb_connection.close()
@@ -163,9 +174,18 @@ def task_DWCT_DSPLIT_c_01(table, columns, **kwargs):
         )
 
     snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
+
+    with snowflake_hook.get_conn() as snowflake_conn:
+        with snowflake_conn.cursor() as cursor:
+            truncate_query = f"""
+            truncate {table}
+            """
+            cursor.execute(truncate_query)
+            print("Truncate 완료")
+
     engine = snowflake_hook.get_sqlalchemy_engine()
 
-    df.to_sql(table, con=engine, if_exists='replace', index=False, chunksize=1000000)
+    df.to_sql(table, con=engine, if_exists='append', index=False, chunksize=200000)
 
     informixdb_connection.close()
     print("커넥션 종료")

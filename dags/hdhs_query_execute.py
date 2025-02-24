@@ -9,6 +9,7 @@ from datetime import datetime
 # 환경 변수 설정
 client_path = Variable.get("client_path")
 sql_query = Variable.get("query")
+conn = Variable.get("conn")
 
 TMP_DIR = "/tmp/ods"
 S3_BUCKET_NAME = "hdhs-dw-mwaa-migdata"
@@ -19,7 +20,7 @@ def oracle_conn_main_test(**kwargs):
     Oracle DB에서 쿼리를 수행하고 결과를 XCom에 저장
     """
     oracle_hook = OracleHook(
-        oracle_conn_id='conn_oracle_tms',
+        oracle_conn_id=conn,
         thick_mode=True,
         thick_mode_lib_dir=client_path
     )

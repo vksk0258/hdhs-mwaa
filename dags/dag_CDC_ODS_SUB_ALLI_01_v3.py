@@ -59,6 +59,8 @@ def process_in_batches(table, query, schema, table_name,columns, pk_columns, **k
     try:
         with postgres_hook.get_conn() as postgres_conn:
             offset = 0
+
+
             batch_number = 1
             while True:
                 temp_table = f"{schema}.{table_name}_TEMP{batch_number}"

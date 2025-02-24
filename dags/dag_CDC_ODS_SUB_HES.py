@@ -1,6 +1,5 @@
 from airflow import DAG
 from operators.oracle_to_snowflake_merge_operator import OracleToSnowflakeMergeOperator
-from operators.oracle_to_snowflake_initial_load_operator import OracleToSnowflakeInitialLoadOperator
 import datetime
 import pendulum
 import boto3
@@ -57,82 +56,59 @@ TMS_SITE_USER_LIST_columns = [
 
 TMS_CAMP_SCHD_INFO_columns = ["POST_ID", "SERVER_ID", "CHANNEL_TYPE", "MSG_ID", "JOB_STATUS", "CONTENT_CONF", "SPOOL_CONF", "OPEN_CHECK", "CLICK_CHECK", "SAFEMAIL_YN", "QUE_CLOSE_DATE", "TRACKING_CLOSE", "START_DATE", "END_DATE", "STOP_DATE", "RESTART_DATE", "RESTART_END_DATE", "ERR_START_DATE", "ERR_END_DATE", "TARGET_CNT", "PUSHED_CNT", "FILTER_CNT", "FAIL_CNT", "OPEN_CNT", "CLICK_CNT", "SAFEMAIL_STATE", "DIVIDE_SEND_USE_YN", "DIVIDE_CNT", "DIVIDE_MINUTE", "DIVIDE_SCHD_SEQ", "LAST_MEMBER_ID", "SPOOL_READ_COUNT", "APPROVAL_ID", "APPROVAL_DATE", "APPROVAL_REQ_ID", "APPROVAL_REQ_DATE", "REG_ID", "SWITCHED_CNT", "REQ_DATE", "SAFEMAIL_REGISTER_D", "REG_DATE", "UPT_DATE", "SAFEMAIL_CONTENT", "IF_ID", "RECOVERY_FLAG"]
 
-oracle_conn_id = "conn_oracle_tms"
-
 
 # DAG 정의
 with DAG(
         dag_id="dag_CDC_ODS_SUB_TMS_01",  # DAG의 고유 식별자
-        schedule_interval='30 0 * * *',
-        start_date=pendulum.datetime(2025, 2, 23, tz="Asia/Seoul"),
+        schedule=None,  # 예약 일정 없음 (수동 실행)
         catchup=False,  # 과거 데이터 실행 스킵
         dagrun_timeout=datetime.timedelta(minutes=6000),  # DAG 실행 제한 시간
         tags=["현대홈쇼핑","TMS", "ODS"]  # DAG에 붙일 태그
 ) as dag:
 
-    task_TMS_APP_DEVICE_LIST = OracleToSnowflakeMergeOperator(
-        task_id = "task_TMS_APP_DEVICE_LIST",
-        oracle_conn_id = oracle_conn_id,
+    task_TMS_APP_DEVICE_LIST_load = OracleToSnowflakeMergeOperator(
+        task_id = "task_TMS_APP_DEVICE_LIST_load",
+        oracle_conn_id = "conn_oracle_OCI",
         snowflake_conn_id = "conn_snow_load",
-        oracle_table = "HDHS_TMS.TMS_APP_DEVICE_LIST",
-        snowflake_table = "ODS_TMS.TMS_APP_DEVICE_LIST",
+        oracle_table = "ODS_TMS.TMS_APP_DEVICE_LIST",
+        snowflake_table = "ODS_TMS.TMS_APP_DEVICE_LIST_TEMP",
         columns = TMS_APP_DEVICE_LIST_columns,
         pk_columns = ['DEVICE_ID'],
         condition_query = TMS_APP_USER_LIST_query,
-        batch_size = 200000,
-        trigger_rule="all_done"
+        batch_size = 100000,
+        retries = 10,
+        retry_delay=datetime.timedelta(seconds=10)
     )
 
-    task_TMS_APP_USER_LIST = OracleToSnowflakeMergeOperator(
-        task_id = "task_TMS_APP_USER_LIST",
-        oracle_conn_id = oracle_conn_id,
+    task_TMS_APP_USER_LIST_load = OracleToSnowflakeMergeOperator(
+        task_id = "task_TMS_APP_USER_LIST_load",
+        oracle_conn_id = "conn_oracle_OCI",
         snowflake_conn_id="conn_snow_load",
-        oracle_table="HDHS_TMS.TMS_APP_USER_LIST",
-        snowflake_table="ODS_TMS.TMS_APP_USER_LIST",
+        oracle_table="ODS_TMS.TMS_APP_USER_LIST",
+        snowflake_table="ODS_TMS.TMS_APP_USER_LIST_TEMP",
         columns = TMS_APP_USER_LIST_columns,
         pk_columns = ["APP_GRP_ID", "CUST_ID"],
         condition_query = TMS_APP_USER_LIST_query,
-        batch_size = 200000,
-        trigger_rule="all_done"
+        batch_size = 100000,
+        retries=10,
+        retry_delay=datetime.timedelta(seconds=10)
     )
 
-    task_TMS_SITE_USER_LIST = OracleToSnowflakeMergeOperator(
-        task_id = "task_TMS_SITE_USER_LIST",
-        oracle_conn_id = oracle_conn_id,
+    task_TMS_SITE_USER_LIST_load = OracleToSnowflakeMergeOperator(
+        task_id = "task_TMS_SITE_USER_LIST_load",
+        oracle_conn_id = "conn_oracle_OCI",
         snowflake_conn_id="conn_snow_load",
-        oracle_table="HDHS_TMS.TMS_SITE_USER_LIST",
-        snowflake_table="ODS_TMS.TMS_SITE_USER_LIST",
+        oracle_table="ODS_TMS.TMS_SITE_USER_LIST",
+        snowflake_table="ODS_TMS.TMS_SITE_USER_LIST_TEMP",
         columns = TMS_SITE_USER_LIST_columns,
         pk_columns = ["SITE_ID", "CUST_ID"],
         condition_query = TMS_APP_USER_LIST_query,
-        batch_size = 200000,
-        trigger_rule="all_done"
-    )
-
-    task_TMS_CAMP_SCHD_INFO = OracleToSnowflakeInitialLoadOperator(
-        task_id = "task_TMS_CAMP_SCHD_INFO",
-        oracle_conn_id = oracle_conn_id,
-        snowflake_conn_id="conn_snow_load",
-        oracle_table = "HDHS_TMS.TMS_CAMP_SCHD_INFO",
-        snowflake_table = "ODS_TMS.TMS_CAMP_SCHD_INFO",
-        columns = ['*'],
-        batch_size = 200000,
-        trigger_rule="all_done"
-    )
-
-    task_TMS_CAMP_CHN_INFO = OracleToSnowflakeInitialLoadOperator(
-        task_id="task_TMS_CAMP_CHN_INFO",
-        oracle_conn_id =oracle_conn_id,
-        snowflake_conn_id="conn_snow_load",
-        oracle_table="HDHS_TMS.TMS_CAMP_CHN_INFO",
-        snowflake_table="ODS_TMS.TMS_CAMP_CHN_INFO",
-        columns=['*'],
-        batch_size=200000,
-        trigger_rule="all_done"
+        batch_size = 100000,
+        retries=10,
+        retry_delay=datetime.timedelta(seconds=10)
     )
 
 
 
-    [task_TMS_APP_DEVICE_LIST , task_TMS_APP_USER_LIST, task_TMS_CAMP_SCHD_INFO]
-    task_TMS_APP_USER_LIST >> task_TMS_SITE_USER_LIST
-    task_TMS_CAMP_SCHD_INFO >> task_TMS_CAMP_CHN_INFO
+    [task_TMS_APP_DEVICE_LIST_load , task_TMS_APP_USER_LIST_load]
+    task_TMS_APP_USER_LIST_load >> task_TMS_SITE_USER_LIST_load

@@ -1,5 +1,5 @@
 from airflow import DAG
-from operators.oracle_to_s3_initial_load_operator import OracleToS3InitialLoadOperator
+from operators.oracle_to_snowflake_initial_load_operator import OracleToSnowflakeInitialLoadOperator
 import datetime
 import pendulum
 
@@ -14,45 +14,48 @@ with DAG(
         tags=["현대홈쇼핑", "초기적재","CMS", "ODS","oracle",'S3']  # DAG에 붙일 태그
 ) as dag:
 
-    task_DWCT_DAGENT_load = OracleToS3InitialLoadOperator(
-        task_id = "task_DWCT_DAGENT_load",
-        conn_id = "conn_oracle_OCI",
-        table = "ODS_CMS.DWCT_DAGENT",
-        columns = ["*"],
-        batch_size = 1000000,
-        retries=10,
-        retry_delay=datetime.timedelta(seconds=10)
-    )
+    # task_DWCT_DAGENT_load = OracleToS3InitialLoadOperator(
+    #     task_id = "task_DWCT_DAGENT_load",
+    #     oracle_conn_id = "conn_oracle_OCI",
+    #     snowflake_conn_id="conn_snow_load",
+    #     oracle_table = "ODS_CMS.DWCT_DAGENT",
+    #     snowflake_table = "ODS_CMS.DWCT_DSPLIT",
+    #     columns = ["*"],
+    #     batch_size=200000,
+    #     trigger_rule="all_done"
+    # )
 
-    task_DWCT_DSPLIT_load = OracleToS3InitialLoadOperator(
+    task_DWCT_DSPLIT_load = OracleToSnowflakeInitialLoadOperator(
         task_id = "task_DWCT_DSPLIT_load",
-        conn_id = "conn_oracle_OCI",
-        table = "ODS_CMS.DWCT_DSPLIT",
+        oracle_conn_id = "conn_oracle_OCI",
+        snowflake_conn_id="conn_snow_load",
+        oracle_table = "ODS_CMS.DWCT_DSPLIT",
+        snowflake_table = "ODS_CMS.DWCT_DSPLIT",
         columns = ["*"],
-        batch_size = 1000000,
-        retries=10,
-        retry_delay=datetime.timedelta(seconds=10)
+        batch_size=200000,
+        trigger_rule="all_done"
     )
 
-    task_DWCT_HAGENT_load = OracleToS3InitialLoadOperator(
-        task_id = "task_DWCT_HAGENT_load",
-        conn_id = "conn_oracle_OCI",
-        table = "ODS_CMS.DWCT_HAGENT",
-        columns = ["*"],
-        batch_size=1000000,
-        retries = 10,
-        retry_delay=datetime.timedelta(seconds=10)
-    )
+    # task_DWCT_HAGENT_load = OracleToS3InitialLoadOperator(
+    #     task_id = "task_DWCT_HAGENT_load",
+    #     oracle_conn_id = "conn_oracle_OCI",
+    #     snowflake_conn_id="conn_snow_load",
+    #     oracle_table = "ODS_CMS.DWCT_HAGENT",
+    #     snowflake_table = "ODS_CMS.DWCT_DSPLIT",
+    #     columns = ["*"],
+    #     batch_size=200000,
+    #     trigger_rule="all_done"
+    # )
 
-    task_DWCT_HSPLIT_load = OracleToS3InitialLoadOperator(
+    task_DWCT_HSPLIT_load = OracleToSnowflakeInitialLoadOperator(
         task_id="task_DWCT_HSPLIT_load",
-        conn_id="conn_oracle_OCI",
-        table="ODS_CMS.DWCT_HSPLIT",
+        oracle_conn_id="conn_oracle_OCI",
+        snowflake_conn_id="conn_snow_load",
+        oracle_table="ODS_CMS.DWCT_HSPLIT",
+        snowflake_table="ODS_CMS.DWCT_DSPLIT",
         columns=["*"],
-        batch_size=1000000,
-        retries=10,
-        retry_delay=datetime.timedelta(seconds=10)
+        batch_size=200000,
+        trigger_rule="all_done"
     )
 
-    task_DWCT_DAGENT_load >> task_DWCT_DSPLIT_load >> \
-    task_DWCT_HAGENT_load >> task_DWCT_HSPLIT_load
+    [task_DWCT_DSPLIT_load, task_DWCT_HSPLIT_load]
