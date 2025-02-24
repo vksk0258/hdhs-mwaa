@@ -7,10 +7,18 @@ from airflow.models import Variable  # Airflow 변수 관리
 from airflow.decorators import task  # Airflow의 태스크를 정의하는 데코레이터
 import pandas as pd  # 데이터프레임 작업을 위한 pandas
 
-# Oracle Client 라이브러리 경로를 변수에서 가져옴
-client_path = Variable.get("client_path")
 KST = pendulum.timezone("Asia/Seoul")
 execution_time = pendulum.now(KST)
+
+insu_list = ['HDHS_INSU_OB_LIST_NEW', 'HDHS_INSU_OUT_OB_LIST_NEW', 'HDHS_INSU_TEMP', 'HDHS_INSU_TEMP_ADDR_NEW', 'HDHS_RENT_OB_LIST_NEW']
+camp_list = ['CP_ORDER_SMR', 'CP_CUST_INFO_SMR', 'CP_BASKET_SMR', 'CP_ZZIM_SMR', 'CP_LOGIN_SMR']
+
+# mart Hook을 사용하여 연결 생성
+snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
+snowflake_hook_etl = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
+snowflake_hook_camp = SnowflakeHook(snowflake_conn_id='conn_snowflake_api')
+snowflake_hook_insu = SnowflakeHook(snowflake_conn_id='conn_snowflake_insu')
+
 
 def get_verification_dict():
     """
@@ -50,7 +58,7 @@ def get_verification_dict():
 
 # DAG 정의
 with DAG(
-    dag_id="hdhs_value_verifi_daily_mart_total",  # DAG의 고유 식별자
+    dag_id="hdhs_value_verifi_daily_mart_merge_total",  # DAG의 고유 식별자
     # start_date=pendulum.datetime(2025, 2, 3, tz="Asia/Seoul"),
     schedule_interval=None,
     catchup=False,  # 과거 데이터 실행을 스킵
@@ -59,7 +67,7 @@ with DAG(
 ) as dag:
 
     # Oracle 데이터 조회 및 XCom으로 데이터 전달
-    @task(task_id='oracle_value_push_xcom', retries=10, retry_delay=datetime.timedelta(seconds=10))
+    @task(task_id='mart_value_push_xcom', retries=10, retry_delay=datetime.timedelta(seconds=10))
     def ora_push(**kwargs):
         """
         Oracle 데이터베이스에서 각 테이블의 레코드 수와 (특정 테이블의 경우) 합계를 조회한 뒤,
@@ -68,51 +76,67 @@ with DAG(
 
         ti = kwargs['ti']  # Task Instance (XCom 푸시를 위해 필요)
 
-        # Oracle Hook을 사용하여 연결 생성
-        oracle_hook = OracleHook(oracle_conn_id='conn_oracle_OCI', thick_mode=True, thick_mode_lib_dir=client_path)
         table_list = get_verification_dict()
 
         ti.xcom_push(key='verifi_list', value=table_list)
 
-        oracle_connection = oracle_hook.get_conn()
-        oracle_cursor = oracle_connection.cursor()
+        snowflake_connection = snowflake_hook_etl.get_conn()
+        snowflake_connection_camp = snowflake_hook_camp.get_conn()
+        snowflake_connection_insu = snowflake_hook_insu.get_conn()
+
+        snowflake_cursor = snowflake_connection.cursor()
+        snowflake_cursor_camp = snowflake_connection_camp.cursor()
+        snowflake_cursor_insu = snowflake_connection_insu.cursor()
 
         value_list = []
 
         for table, columns in table_list.items():
+            schema, table_name = table.split('.')
             try:
                 if columns:
                     sum_columns = ", ".join([f"SUM({col})" for col in columns])
                     ora_query = f"""SELECT COUNT(*), {sum_columns} 
-                                    FROM {table}
-                                """
-                    result = oracle_cursor.execute(ora_query).fetchone()
+                                    FROM {table}"""
+                    if table_name in insu_list:
+                        result = snowflake_cursor_insu.execute(ora_query).fetchone()
+                    elif table_name in camp_list:
+                        result = snowflake_cursor_camp.execute(ora_query).fetchone()
+                    else:
+                        result = snowflake_cursor.execute(ora_query).fetchone()
                     count_value = result[0]
                     sum_values = [[columns[i], result[i + 1]] for i in range(len(columns))]
                     value_list.append([count_value] + sum_values)
                 else:
                     ora_query = f"""SELECT COUNT(*) 
-                                    FROM {table}
-                                    """
-                    result = oracle_cursor.execute(ora_query).fetchone()
+                                    FROM {table}"""
+                    if table_name in insu_list:
+                        result = snowflake_cursor_insu.execute(ora_query).fetchone()
+                    elif table_name in camp_list:
+                        result = snowflake_cursor_camp.execute(ora_query).fetchone()
+                    else:
+                        result = snowflake_cursor.execute(ora_query).fetchone()
                     value_list.append([result[0]])
 
                 print(ora_query)
 
-                print(f"ORA RESULT : {value_list}")
+                print(f"MART RESULT : {value_list}")
 
                 # 조회 결과를 XCom으로 전달
-                ti.xcom_push(key='ora_data', value=value_list)
+                ti.xcom_push(key='mart_data', value=value_list)
             except Exception as e:
                 print(f"Error with value: {e}")
 
         # 커넥션 닫기
-        oracle_cursor.close()
-        oracle_connection.close()
+        snowflake_cursor.close()
+        snowflake_cursor_insu.close()
+        snowflake_cursor_camp.close()
+        snowflake_connection.close()
+        snowflake_connection_camp.close()
+        snowflake_connection_insu.close()
 
 
     # Snowflake 데이터 조회 및 XCom으로 데이터 전달
-    @task(task_id='snowflake_value_push_xcom')
+    @task(task_id='OCI_DW_value_push_xcom')
     def snow_push(**kwargs):
         """
         Snowflake 데이터베이스에서 각 테이블의 레코드 수와 (특정 테이블의 경우) 합계를 조회한 뒤,
@@ -121,14 +145,16 @@ with DAG(
 
         ti = kwargs['ti']  # Task Instance (XCom 푸시를 위해 필요)
 
-        table_list = ti.xcom_pull(key='verifi_list', task_ids='oracle_value_push_xcom')
+        table_list = get_verification_dict()
+
+        ti.xcom_push(key='verifi_list', value=table_list)
 
         # Snowflake Hook을 사용하여 연결 생성
         snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
         snowflake_connection = snowflake_hook.get_conn()
         snowflake_cursor = snowflake_connection.cursor()
 
-        value_list = []  # 결과 저장 리스트
+        value_list = []
 
         # 테이블 목록 순회하며 쿼리 실행
         for table, columns in table_list.items():
@@ -137,24 +163,23 @@ with DAG(
                 if columns:
                     sum_columns = ", ".join([f"SUM({col})" for col in columns])
                     snow_query = f"""SELECT COUNT(*), {sum_columns} 
-                                    FROM DW_OCI.{table_name}"""
+                                            FROM DW_OCI.{table_name}"""
                     result = snowflake_cursor.execute(snow_query).fetchone()
                     count_value = result[0]
                     sum_values = [[columns[i], result[i + 1]] for i in range(len(columns))]
                     value_list.append([count_value] + sum_values)
                 else:
                     snow_query = f"""SELECT COUNT(*) 
-                                    FROM DW_OCI.{table_name}"""
+                                            FROM DW_OCI.{table_name}"""
                     result = snowflake_cursor.execute(snow_query).fetchone()
                     value_list.append([result[0]])
 
                 print(snow_query)
 
-
-                print(f"SNOW RESULT : {value_list}")
+                print(f"OCI_DW RESULT : {value_list}")
 
                 # 조회 결과를 XCom으로 전달
-                ti.xcom_push(key='snow_data', value=value_list)
+                ti.xcom_push(key='OCI_DW_data', value=value_list)
             except Exception as e:
                 print(f"Error with value: {e}")
 
@@ -162,11 +187,11 @@ with DAG(
         snowflake_cursor.close()
         snowflake_connection.close()
 
-    # Oracle과 Snowflake 데이터를 비교하고 결과를 Snowflake에 저장
+        # snowflake과 Snowflake 데이터를 비교하고 결과를 Snowflake에 저장
     @task(task_id='insert_comparison_results')
     def insert_result(**kwargs):
         """
-        Oracle과 Snowflake 데이터베이스의 조회 결과를 비교하고, 비교 결과를
+        snowflake과 Snowflake 데이터베이스의 조회 결과를 비교하고, 비교 결과를
         Snowflake의 결과 테이블에 삽입하는 태스크.
         """
         ti = kwargs['ti']  # Task Instance (XCom 접근을 위해 필요)
@@ -177,30 +202,29 @@ with DAG(
         snowflake_connection = snowflake_hook.get_conn()
         snowflake_cursor = snowflake_connection.cursor()
 
-        table_list = ti.xcom_pull(key='verifi_list', task_ids='oracle_value_push_xcom')
+        table_list = ti.xcom_pull(key='verifi_list', task_ids='mart_value_push_xcom')
 
         print(table_list)
         print(type(table_list))
 
-
         # 테이블 목록 순회하며 비교 수행
-        for idx,table in enumerate(table_list):
+        for idx, table in enumerate(table_list):
             try:
                 schema_name = table.split('.')[0]  # 테이블의 스키마 이름
                 table_name = table.split('.')[1]  # 테이블 이름
 
-                # XCom에서 Oracle 및 Snowflake 조회 결과 가져오기
-                snow_data = ti.xcom_pull(key='snow_data', task_ids='snowflake_value_push_xcom')[idx]
-                ora_data = ti.xcom_pull(key='ora_data', task_ids='oracle_value_push_xcom')[idx]
+                # XCom에서 snowflake 및 Snowflake 조회 결과 가져오기
+                mart_data = ti.xcom_pull(key='mart_data', task_ids='mart_value_push_xcom')[idx]
+                OCI_DW_data = ti.xcom_pull(key='OCI_DW_data', task_ids='OCI_DW_value_push_xcom')[idx]
 
-                print(ora_data)
-                print(snow_data)
+                print(mart_data)
+                print(OCI_DW_data)
 
-                snow_cnt = int(snow_data[0])  # Snowflake 레코드 수
-                ora_cnt = int(ora_data[0])  # Oracle 레코드 수
+                ora_cnt = int(mart_data[0])  # Oracle 레코드 수
+                snow_cnt = int(OCI_DW_data[0])  # Snowflake 레코드 수
 
-                snow_sum_list = snow_data[1:]
-                ora_sum_list = ora_data[1:]
+                ora_sum_list = mart_data[1:]
+                snow_sum_list = OCI_DW_data[1:]
 
                 ora_minus_snow_cnt = ora_cnt - snow_cnt
 
@@ -213,7 +237,7 @@ with DAG(
                         ora_sum_value = round(float(ora_sum[1]), 3) if ora_sum[1] is not None else 0
                         ora_minus_snow_sum = ora_sum_value - snow_sum_value
                         sum_insert_query = """
-                                        INSERT INTO DW_LOAD_DB.VERIFI_DATA_MART.MART_DATA_SUM_VERIFI_LOG_TOTAL (
+                                        INSERT INTO DW_LOAD_DB.VERIFI_DATA_MART_MERGE.MART_DATA_SUM_VERIFI_LOG_TOTAL (
                                             VERIFY_DATE, DATABASE_NAME, SCHEMA_NAME, TABLE_NAME, COLUMN_NAME,
                                             ORA_SUM, SNOW_SUM, ORA_MINUS_SNOW_SUM
                                         )
@@ -231,11 +255,9 @@ with DAG(
                         )
                         snowflake_cursor.execute(sum_insert_query, parameters)
 
-
-
                 # 비교 결과를 Snowflake 테이블에 삽입
                 cnt_insert_query = """
-                    INSERT INTO DW_LOAD_DB.VERIFI_DATA_MART.MART_DATA_COUNT_VERIFI_LOG_TOTAL (
+                    INSERT INTO DW_LOAD_DB.VERIFI_DATA_MART_MERGE.MART_DATA_COUNT_VERIFI_LOG_TOTAL (
                         VERIFY_DATE, DATABASE_NAME, SCHEMA_NAME, TABLE_NAME, 
                         ORA_CNT, SNOW_CNT, ORA_MINUS_SNOW_CNT
                     )

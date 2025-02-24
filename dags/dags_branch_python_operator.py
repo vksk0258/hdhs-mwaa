@@ -35,6 +35,7 @@ with DAG(
 
     def common_func(**kwargs):
         print(kwargs['selected'])
+        Variable.set("batch_i","ddd")
 
 
     task_a = PythonOperator(

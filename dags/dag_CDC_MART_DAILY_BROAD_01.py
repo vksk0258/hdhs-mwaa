@@ -212,6 +212,13 @@ with DAG(
         trigger_rule="all_done"
     )
 
+    task_SP_BOD_ORD_CTPF_VACO_DTL2 = PythonOperator(
+        task_id="SP_BOD_ORD_CTPF_VACO_DTL2",
+        python_callable=execute_procedure,
+        op_args=["SP_BOD_ORD_CTPF_VACO_DT2L", p_start, p_end],
+        trigger_rule="all_done"
+    )
+
     task_SP_BOD_ORD_PTC = PythonOperator(
         task_id="task_SP_BOD_ORD_PTC",
         python_callable=execute_procedure,
@@ -405,7 +412,7 @@ with DAG(
 
     [task_SP_DW_USE_RATIO, task_SP_BOD_ORD_CTPF_VACO_DTL]
 
-    task_SP_BOD_ORD_CTPF_VACO_DTL >> task_SP_BOD_ORD_PTC >> fail_dag() >> if_fail_task() >>task_SP_BOD_ORD_DC_DTL >> [task_SP_RIA_TV_BITM_ORD_FCT,
+    task_SP_BOD_ORD_CTPF_VACO_DTL >> task_SP_BOD_ORD_CTPF_VACO_DTL2 >> task_SP_BOD_ORD_PTC >> fail_dag() >> if_fail_task() >>task_SP_BOD_ORD_DC_DTL >> [task_SP_RIA_TV_BITM_ORD_FCT,
                                                                                        task_SP_RIA_BITM_ORD_FCT_01]
     task_SP_RIA_TV_BITM_ORD_FCT >> task_SP_RIA_BITM_SELL_MDA_FCT >> task_SP_RIA_BITM_ORD_CUST_FCT
 

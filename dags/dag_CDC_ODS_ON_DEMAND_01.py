@@ -1,13 +1,29 @@
 from airflow import DAG
-from airflow.decorators import task
-from airflow.operators.python import PythonOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-import datetime
+from airflow.operators.python import PythonOperator
+import numpy as np
 import pandas as pd
 import pendulum
 import boto3
 import json
-import os
+
+# S3 parameters
+s3 = boto3.client('s3')
+bucket_name = "hdhs-dw-mwaa-s3"
+key = "param/wf_DD01_0030_DAILY_MAIN_01.json"
+response = s3.get_object(Bucket=bucket_name, Key=key)
+params = json.load(response['Body'])
+
+p_start = params.get("$$P_START")
+p_end = params.get("$$P_END")
+
+# p_start = '20250210'
+# p_end = '20250210'
+
+KST = pendulum.timezone("Asia/Seoul")
+
+condition_query = f"""APLY_DT >= TO_CHAR(DATEADD(DAY, 1,TO_DATE('{p_start}','YYYYMMDD')),'YYYYMMDD') 
+                    AND APLY_DT <= TO_CHAR(DATEADD(DAY, 1,TO_DATE('{p_end}','YYYYMMDD')),'YYYYMMDD')"""
 
 # Column definitions
 RAR_REAL_SWRT_ETC_DTL_COLUMNS = [
@@ -31,14 +47,14 @@ RAR_REAL_SWRT_ONLN_DTL_COLUMNS = [
     "ETL_DTM"
 ]
 RAR_REAL_SWRT_ONLN_ETC_DTL_COLUMNS = [
-    "APLY_DT", "BFMT_NO", "SELL_MDA_GBCD", "ITEM_L_CSF_CD", "ITEM_M_CSF_CD",
-    "ITEM_S_CSF_CD", "ITEM_D_CSF_CD", "BRND_CD", "SLITM_CD", "BROD_DT",
-    "BROD_STRT_DTM", "BROD_TITL", "ITEM_L_CSF_NM", "ITEM_M_CSF_NM", "ITEM_S_CSF_NM",
-    "ITEM_D_CSF_NM", "BRND_NM", "MD_CD", "MD_NM", "DEPT_ORGN_NM",
-    "PART_NM", "SLITM_NM", "TOT_ORD_QTY", "RORD_QTY", "CNCL_QTY",
-    "RTP_QTY", "RTP_CNCL_QTY", "EXCH_CNT", "REAL_SWRT", "RGST_ID",
-    "RGST_IP", "REG_DTM", "CHGP_ID", "CHGP_IP", "CHG_DTM",
-    "ETL_DTM"
+    "BROD_MDA_GBCD", "APLY_DT", "BFMT_NO", "SELL_MDA_GBCD",
+    "ITEM_L_CSF_CD", "ITEM_M_CSF_CD", "ITEM_S_CSF_CD", "ITEM_D_CSF_CD",
+    "BRND_CD", "SLITM_CD", "BROD_DT", "BROD_STRT_DTM", "BROD_TITL",
+    "ITEM_L_CSF_NM", "ITEM_M_CSF_NM", "ITEM_S_CSF_NM", "ITEM_D_CSF_NM",
+    "BRND_NM", "MD_CD", "MD_NM", "DEPT_ORGN_NM", "PART_NM", "SLITM_NM",
+    "TOT_ORD_QTY", "RORD_QTY", "CNCL_QTY", "RTP_QTY", "RTP_CNCL_QTY",
+    "EXCH_CNT", "REAL_SWRT", "RGST_ID", "RGST_IP", "REG_DTM",
+    "CHGP_ID", "CHGP_IP", "CHG_DTM", "ETL_DTM"
 ]
 RAR_REAL_SWRT_DTL_COLUMNS = [
     "APLY_DT", "BFMT_NO", "SELL_MDA_GBCD", "ITEM_L_CSF_CD", "ITEM_M_CSF_CD",
@@ -50,109 +66,148 @@ RAR_REAL_SWRT_DTL_COLUMNS = [
     "RGST_IP", "REG_DTM", "CHGP_ID", "CHGP_IP", "CHG_DTM", "ETL_DTM"
 ]
 
-# Constants
-S3_BUCKET_NAME = "hdhs-dw-mwaa-migdata"
-TMP_DIR = "/tmp/incremental"
-TABLE_NAME_LIST = [
-    {"table": "DW_RM.RAR_REAL_SWRT_DTL", "columns": RAR_REAL_SWRT_DTL_COLUMNS},
-    {"table": "DW_RM.RAR_REAL_SWRT_ETC_DTL", "columns": RAR_REAL_SWRT_ETC_DTL_COLUMNS},
-    {"table": "DW_RM.RAR_REAL_SWRT_ONLN_DTL", "columns": RAR_REAL_SWRT_ONLN_DTL_COLUMNS},
-    {"table": "DW_RM.RAR_REAL_SWRT_ONLN_ETC_DTL", "columns": RAR_REAL_SWRT_ONLN_ETC_DTL_COLUMNS},
-]
+etl_conn_id = 'conn_snowflake_etl_temp'
+load_conn_id = 'conn_snow_load'
 
-# Load parameters from S3
-s3 = boto3.client('s3')
-PARAM_BUCKET_NAME = "hdhs-dw-mwaa-s3"
-PARAM_KEY = "param/wf_DD01_0030_DAILY_MAIN_01.json"
-response = s3.get_object(Bucket=PARAM_BUCKET_NAME, Key=PARAM_KEY)
-params = json.load(response['Body'])
+RAR_REAL_SWRT_DTL_etl_table = "DW_RM.RAR_REAL_SWRT_DTL"
+RAR_REAL_SWRT_DTL_load_table = "MWAA.RAR_REAL_SWRT_DTL"
+RAR_REAL_SWRT_ETC_DTL_etl_table = "DW_RM.RAR_REAL_SWRT_ETC_DTL"
+RAR_REAL_SWRT_ETC_DTL_load_table = "MWAA.RAR_REAL_SWRT_ETC_DTL"
+RAR_REAL_SWRT_ONLN_DTL_etl_table = "DW_RM.RAR_REAL_SWRT_ONLN_DTL"
+RAR_REAL_SWRT_ONLN_DTL_load_table = "MWAA.RAR_REAL_SWRT_ONLN_DTL"
+RAR_REAL_SWRT_ONLN_ETC_DTL_etl_table = "DW_RM.RAR_REAL_SWRT_ONLN_ETC_DTL"
+RAR_REAL_SWRT_ONLN_ETC_DTL_load_table = "MWAA.RAR_REAL_SWRT_ONLN_ETC_DTL"
 
-# Parse time parameters
-p_start = params.get('$$P_START')
-p_end = params.get('$$P_END')
+def snow_to_snow_merge(etl_conn_id, load_conn_id, etl_table, load_table, columns, pk_columns, condition_query):
+    import os
+    """
+    특정 테이블 데이터를 처리하고 Snowflake에 MERGE 합니다.
+    """
 
-fm_p_start = datetime.datetime.strptime(f"{params.get('$$P_START')}000000", "%Y%m%d%H%M%S")
-fm_p_end = datetime.datetime.strptime(f"{params.get('$$P_END')}235959", "%Y%m%d%H%M%S")
+    etl_schema, etl_table_name = etl_table.split('.')
+    load_schema, load_table_name = load_table.split('.')
 
-date_folder = fm_p_start.strftime('%Y/%m/%d')
-time_identifier = fm_p_end.strftime('%H%M%S')
 
-BATCH_SIZE = 100000
+    etl_hook = SnowflakeHook(snowflake_conn_id=etl_conn_id)
+    load_hook = SnowflakeHook(snowflake_conn_id=load_conn_id)
+    load_connection = load_hook.get_conn()
 
-def process_in_batches(table, columns):
-    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
+    chunk_index = 1
 
-    if not os.path.exists(TMP_DIR):
-        os.makedirs(TMP_DIR)
+    with etl_hook.get_conn() as etl_connection:
 
-    schema, table_name = table.split('.')
-    print(table)
-
-    try:
-        with snowflake_hook.get_conn() as conn:
-            offset = 0
-            batch_number = 1
-
-            p_start_add_1d = fm_p_start + datetime.timedelta(days=1)
-            p_end_add_1d = fm_p_end + datetime.timedelta(days=1)
-
-            while True:
-                query = f"""
-                    SELECT {', '.join(columns)} 
-                    FROM {table} 
+        temp_table = f"{load_table_name}{chunk_index}"
+        query = f"""
+                    SELECT {', '.join(columns)}
+                    FROM {etl_table}
                 """
-                query += f"""
-                    WHERE APLY_DT >= '{p_start_add_1d.strftime('%Y-%m-%d')}' 
-                    AND APLY_DT <= '{p_end_add_1d.strftime('%Y-%m-%d')}'
+        query += f"""WHERE {condition_query}
                 """
 
-                print(query)
+        print("==================[ORACLE QEURY]==================")
+        print(query)
+        df = pd.read_sql(query, etl_connection)
 
-                df = pd.read_sql(query, conn)
-                if df.empty:
-                    break
+        for col in df.select_dtypes(include=['datetime', 'datetimetz']).columns:
+            df[col] = df[col].apply(
+                lambda x: None if pd.isnull(x) or x == pd.NaT or str(x).strip() in ['NaT', '']
+                else x.isoformat() if isinstance(x, pd.Timestamp) else str(x)
+            )
 
-                file_name = f"{TMP_DIR}/{table_name}_batch{batch_number}_{fm_p_end.strftime('%Y%m%d')}_{time_identifier}.parquet"
-                s3_path = f"s3://{S3_BUCKET_NAME}/dw/{schema}/{table_name}/{date_folder}/{fm_p_end.strftime('%Y%m%d')}-batch{batch_number}-{time_identifier}.parquet"
+        # NaN 값을 명확하게 None으로 변환
+        # df.replace({np.nan: None}, inplace=True)
 
-                df.to_parquet(file_name, engine='pyarrow', index=False)
-                os.system(f"aws s3 cp {file_name} {s3_path}")
-                os.remove(file_name)
+        with load_connection.cursor() as load_cursor:
 
-                offset += BATCH_SIZE
-                batch_number += 1
+            create_temp_table_query = f"""
+                        CREATE TEMPORARY TABLE {load_schema}.{temp_table} AS
+                        SELECT * FROM {load_table} WHERE 1=0;
+                        """  # 빈 임시 테이블 생성
+            print("==================[create_temp_table_query]==================")
+            print(create_temp_table_query)
 
-    except Exception as e:
-        print(f"Error processing table {table_name}: {e}")
+            load_cursor.execute(create_temp_table_query)
+
+            insert_query = f"""
+                INSERT INTO {load_schema}.{temp_table} ({", ".join(columns)})
+                VALUES ({", ".join(["%s"] * len(columns))});
+                """
+            print("==================[insert_query]==================")
+            print(insert_query)
+
+            # MERGE 쿼리 생성 (배치 처리)
+            values = df.where(pd.notnull(df), None).values.tolist()
+            load_cursor.executemany(insert_query, values)  # batch insert 실행
+
+            # 3️⃣ MERGE 실행
+            merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in pk_columns])
+
+            update_set = ", ".join(
+                [f"target.{col} = source.{col}" for col in columns if col not in pk_columns])
+            insert_columns = ", ".join(columns)
+            insert_values = ", ".join([f"source.{col}" for col in columns])
+
+            merge_query = f"""
+                MERGE INTO {load_table} AS target
+                USING {load_schema}.{temp_table} AS source
+                ON {merge_condition}
+                WHEN MATCHED THEN
+                    UPDATE SET {update_set}
+                WHEN NOT MATCHED THEN
+                    INSERT ({insert_columns})
+                    VALUES ({insert_values});
+                """
+
+            print("==================[merge_query]==================")
+            print(merge_query)
+
+            load_cursor.execute(merge_query)
+
+
+    load_connection.close()
+    print("커넥션 종료")
 
 
 # Define the DAG
 with DAG(
     dag_id="dag_CDC_ODS_ON_DEMAND_01",
     schedule_interval=None,
-    tags=["현대홈쇼핑","MART프로시져"]
+    tags=["현대홈쇼핑","ODS","역방향"]
 ) as dag:
 
-    @task(task_id="task_RAR_REAL_SWRT_DTL_TO_HDHS_c_01", trigger_rule="all_done")
-    def task_RAR_REAL_SWRT_DTL_TO_HDHS_c_01(table):
-        process_in_batches(table['table'], table['columns'])
-    @task(task_id="task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS_c_01", trigger_rule="all_done")
-    def task_RAR_REAL_SWRT_ETC_DTL_HDHS_c_01(table):
-        process_in_batches(table['table'], table['columns'])
+    task_RAR_REAL_SWRT_DTL_TO_HDHS = PythonOperator(
+        task_id="task_RAR_REAL_SWRT_DTL_TO_HDHS",
+        python_callable=snow_to_snow_merge,
+        op_args=[etl_conn_id, load_conn_id, RAR_REAL_SWRT_DTL_etl_table, RAR_REAL_SWRT_DTL_load_table, RAR_REAL_SWRT_DTL_COLUMNS, ['APLY_DT','BFMT_NO','BRND_CD','ITEM_D_CSF_CD','ITEM_L_CSF_CD','ITEM_M_CSF_CD','ITEM_S_CSF_CD','SELL_MDA_GBCD','SLITM_CD'],
+                 condition_query]
+    )
 
-    @task(task_id="task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS_c_01", trigger_rule="all_done")
-    def task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS_c_01(table):
-        process_in_batches(table['table'], table['columns'])
+    task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS = PythonOperator(
+        task_id="task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS",
+        python_callable=snow_to_snow_merge,
+        op_args=[etl_conn_id, load_conn_id, RAR_REAL_SWRT_ETC_DTL_etl_table, RAR_REAL_SWRT_ETC_DTL_load_table, RAR_REAL_SWRT_ETC_DTL_COLUMNS, ['APLY_DT','BFMT_NO','BRND_CD','BROD_MDA_GBCD','ITEM_D_CSF_CD','ITEM_L_CSF_CD','ITEM_M_CSF_CD','ITEM_S_CSF_CD','SELL_MDA_GBCD','SLITM_CD'],
+                 condition_query]
+    )
 
-    @task(task_id="task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS_c_01", trigger_rule="all_done")
-    def task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS_c_01(table):
-        process_in_batches(table['table'], table['columns'])
+    task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS = PythonOperator(
+        task_id="task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS",
+        python_callable=snow_to_snow_merge,
+        op_args=[etl_conn_id, load_conn_id, RAR_REAL_SWRT_ONLN_DTL_etl_table, RAR_REAL_SWRT_ONLN_DTL_load_table, RAR_REAL_SWRT_ONLN_DTL_COLUMNS, ['APLY_DT','BFMT_NO','BRND_CD','ITEM_D_CSF_CD','ITEM_L_CSF_CD','ITEM_M_CSF_CD','ITEM_S_CSF_CD','SELL_MDA_GBCD','SLITM_CD'],
+                 condition_query]
+    )
+
+    task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS = PythonOperator(
+        task_id="task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS",
+        python_callable=snow_to_snow_merge,
+        op_args=[etl_conn_id, load_conn_id, RAR_REAL_SWRT_ONLN_ETC_DTL_etl_table, RAR_REAL_SWRT_ONLN_ETC_DTL_load_table, RAR_REAL_SWRT_ONLN_ETC_DTL_COLUMNS, ['APLY_DT','BFMT_NO','BRND_CD','BROD_MDA_GBCD','ITEM_D_CSF_CD','ITEM_L_CSF_CD','ITEM_M_CSF_CD','ITEM_S_CSF_CD','SELL_MDA_GBCD','SLITM_CD'],
+                 condition_query]
+    )
 
 
-    task_RAR_REAL_SWRT_DTL_TO_HDHS_c_01(TABLE_NAME_LIST[0]) >> \
-    task_RAR_REAL_SWRT_ETC_DTL_HDHS_c_01(TABLE_NAME_LIST[1]) >> \
-    task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS_c_01(TABLE_NAME_LIST[2]) >> \
-    task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS_c_01(TABLE_NAME_LIST[3])
+    task_RAR_REAL_SWRT_DTL_TO_HDHS >> \
+    task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS >> \
+    task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS >> \
+    task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS
 
 
 

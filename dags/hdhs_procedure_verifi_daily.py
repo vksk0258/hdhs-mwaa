@@ -48,21 +48,38 @@ with DAG(
         for procedure in procedure_list:
             try:
                 # Snowflake와 Oracle에서 해당 프로시저의 실행 결과 조회
-                snow_query = f"""
-                        SELECT PGMID, STARTTIME, ENDTIME, ST, JBPMT, READCNT, BYCNT, ERRCNT, UPDCNT, WRTCNT FROM DW_ETL_DB.DW_ETC.JOB_RESULT 
-                        WHERE PGMID = '{procedure[0]}' 
-                        AND JBPMT = '{procedure[4]}'
-                        AND STARTTIME = '{procedure[1].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}'
-                        ORDER BY STARTTIME ASC
-                        """
+                if procedure[4]:
+                    snow_query = f"""
+                            SELECT PGMID, STARTTIME, ENDTIME, ST, JBPMT, READCNT, BYCNT, ERRCNT, UPDCNT, WRTCNT FROM DW_ETL_DB.DW_ETC.JOB_RESULT 
+                            WHERE PGMID = '{procedure[0]}' 
+                            AND JBPMT = '{procedure[4]}'
+                            AND STARTTIME = '{procedure[1].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}'
+                            ORDER BY STARTTIME ASC
+                            """
 
-                ora_query = f"""
-                        SELECT PGMID, STARTTIME, ENDTIME, ST, JBPMT, READCNT, BYCNT, ERRCNT, UPDCNT, WRTCNT FROM DW_ETC.JOB_RESULT 
-                        WHERE PGMID = '{procedure[0]}' 
-                        AND JBPMT = '{procedure[4]}'
-                        AND STARTTIME >= TO_DATE('{start_time}', 'YYYY-MM-DD HH24:MI:SS')
-                        ORDER BY STARTTIME ASC
-                        """
+                    ora_query = f"""
+                            SELECT PGMID, STARTTIME, ENDTIME, ST, JBPMT, READCNT, BYCNT, ERRCNT, UPDCNT, WRTCNT FROM DW_ETC.JOB_RESULT 
+                            WHERE PGMID = '{procedure[0]}' 
+                            AND JBPMT = '{procedure[4]}'
+                            AND STARTTIME >= TO_DATE('{start_time}', 'YYYY-MM-DD HH24:MI:SS')
+                            ORDER BY STARTTIME ASC
+                            """
+                else:
+                    snow_query = f"""
+                            SELECT PGMID, STARTTIME, ENDTIME, ST, JBPMT, READCNT, BYCNT, ERRCNT, UPDCNT, WRTCNT FROM DW_ETL_DB.DW_ETC.JOB_RESULT 
+                            WHERE PGMID = '{procedure[0]}' 
+                            AND JBPMT IS NULL
+                            AND STARTTIME = '{procedure[1].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}'
+                            ORDER BY STARTTIME ASC
+                            """
+
+                    ora_query = f"""
+                            SELECT PGMID, STARTTIME, ENDTIME, ST, JBPMT, READCNT, BYCNT, ERRCNT, UPDCNT, WRTCNT FROM DW_ETC.JOB_RESULT 
+                            WHERE PGMID = '{procedure[0]}' 
+                            AND JBPMT IS NULL
+                            AND STARTTIME >= TO_DATE('{start_time}', 'YYYY-MM-DD HH24:MI:SS')
+                            ORDER BY STARTTIME ASC
+                            """
 
                 print(snow_query)
                 print(ora_query)

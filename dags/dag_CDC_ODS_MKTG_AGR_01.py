@@ -1,19 +1,46 @@
 from airflow import DAG
-from airflow.decorators import task
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-import datetime
+from airflow.operators.python import PythonOperator
+import numpy as np
 import pandas as pd
+import pendulum
 import boto3
 import json
-import os
+
+# S3 parameters
+s3 = boto3.client('s3')
+bucket_name = "hdhs-dw-mwaa-s3"
+key = "param/wf_DD01_0030_DAILY_MAIN_01.json"
+response = s3.get_object(Bucket=bucket_name, Key=key)
+params = json.load(response['Body'])
+
+p_start = params.get("$$P_START")
+p_end = params.get("$$P_END")
+
+# p_start = '20250210'
+# p_end = '20250210'
+
+KST = pendulum.timezone("Asia/Seoul")
+
+BMK_CUST_MKTG_AGR_MST_query = f"""
+MKTG_RFS_TRGT_YN = 'Y' 
+AND NOTC_PRRG_DT BETWEEN TO_CHAR(TO_DATE('{p_start}' , 'YYYYMMDD') + 1 , 'YYYYMMDD') 
+AND TO_CHAR(TO_DATE('{p_start}' , 'YYYYMMDD') + 1 , 'YYYYMMDD')
+"""
+
+BMK_CUST_MKTG_AGR_EMAIL_DTL_query = f"""
+NOTC_PRRG_DT BETWEEN TO_CHAR(TO_DATE('{p_start}' , 'YYYYMMDD') + 1 , 'YYYYMMDD') 
+AND TO_CHAR(TO_DATE('{p_start}' , 'YYYYMMDD') + 1 , 'YYYYMMDD')
+AND ETL_DTM BETWEEN TO_TIMESTAMP(TO_CHAR(CURRENT_TIMESTAMP(0) , 'YYYYMMDD') || '000000' , 'YYYYMMDDHH24MISS') 
+AND TO_TIMESTAMP(TO_CHAR(CURRENT_TIMESTAMP(0) , 'YYYYMMDD') || '235959', 'YYYYMMDDHH24MISS')
+"""
 
 # Column definitions
 BMK_CUST_MKTG_AGR_MST_COLUMNS = [
-    "CUST_NO", "CUST_STAT_GBCD", "CUST_NM", "NOTC_PRRG_DT", "NOTC_CMPT_DT",
+    "CUST_NO", "CUST_STAT_GBCD", "NOTC_PRRG_DT", "NOTC_CMPT_DT",
     "MKTG_AGR_RFS_YN", "MKTG_AGR_RFS_DT", "INSU_OB_RCV_AGR_YN", "INSU_OB_RCV_AGR_DT",
     "EMAIL_RCV_AGR_YN", "EMAIL_RCV_AGR_DT", "SMS_RCV_AGR_YN", "SMS_RCV_AGR_DT",
-    "PUSH_RCV_AGR_YN", "PUSH_RCV_AGR_DT", "MKTG_RFS_TRGT_YN", "RGST_ID",
-    "REG_DTM", "CHG_DTM"
+    "PUSH_RCV_AGR_YN", "PUSH_RCV_AGR_DT", "RGST_ID", "REG_DTM", "CHG_DTM"
 ]
 BMK_CUST_MKTG_AGR_EMAIL_DTL_COLUMNS = [
     "CUST_NO", "CUST_NM", "EMAIL_ADR", "NOTC_PRRG_DT", "NOTC_CMPT_DT",
@@ -21,116 +48,128 @@ BMK_CUST_MKTG_AGR_EMAIL_DTL_COLUMNS = [
     "PUSH_RCV_AGR_DT", "RGST_ID", "REG_DTM", "CHG_DTM"
 ]
 
-# Constants
-S3_BUCKET_NAME = "hdhs-dw-mwaa-migdata"
-TMP_DIR = "/tmp/incremental"
-TABLE_NAME_LIST = [
-    {"table": "DW_BM.BMK_CUST_MKTG_AGR_MST", "columns": BMK_CUST_MKTG_AGR_MST_COLUMNS},
-    {"table": "DW_BM.BMK_CUST_MKTG_AGR_EMAIL_DTL", "columns": BMK_CUST_MKTG_AGR_EMAIL_DTL_COLUMNS}
-]
-
-# Load parameters from S3
-s3 = boto3.client('s3')
-PARAM_BUCKET_NAME = "hdhs-dw-mwaa-s3"
-PARAM_KEY = "param/wf_DD01_0030_DAILY_MAIN_01.json"
-response = s3.get_object(Bucket=PARAM_BUCKET_NAME, Key=PARAM_KEY)
-params = json.load(response['Body'])
-
-# Parse time parameters
-p_start = f"{params.get('$$P_START')}000000"
-p_end = f"{params.get('$$P_END')}235959"
-
-fm_p_start = datetime.datetime.strptime(p_start, "%Y%m%d%H%M%S")
-fm_p_end = datetime.datetime.strptime(p_end, "%Y%m%d%H%M%S")
-
-date_folder = fm_p_start.strftime('%Y/%m/%d')
-time_identifier = fm_p_end.strftime('%H%M%S')
-
-BATCH_SIZE = 100000
+etl_conn_id = 'conn_snowflake_etl_temp'
+load_conn_id = 'conn_snow_load'
+BMK_CUST_MKTG_AGR_MST_etl_table = 'DW_BM.BMK_CUST_MKTG_AGR_MST'
+CU_CUST_MKTG_AGR_MST_load_table = 'MWAA.CU_CUST_MKTG_AGR_MST'
+BMK_CUST_MKTG_AGR_EMAIL_DTL_etl_table = 'DW_BM.BMK_CUST_MKTG_AGR_EMAIL_DTL'
+CU_MKTG_AGR_EMAIL_DTL_load_table = 'MWAA.CU_MKTG_AGR_EMAIL_DTL'
 
 
-def process_in_batches(table, columns):
-    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
+def snow_to_snow_merge(etl_conn_id, load_conn_id, etl_table, load_table, columns, pk_columns, condition_query):
+    import os
+    """
+    특정 테이블 데이터를 처리하고 Snowflake에 MERGE 합니다.
+    """
 
-    if not os.path.exists(TMP_DIR):
-        os.makedirs(TMP_DIR)
+    etl_schema, etl_table_name = etl_table.split('.')
+    load_schema, load_table_name = load_table.split('.')
 
-    schema, table_name = table.split('.')
-    print(table)
 
-    try:
-        with snowflake_hook.get_conn() as conn:
-            start_date = (fm_p_start + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
-            end_date = (fm_p_end + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+    etl_hook = SnowflakeHook(snowflake_conn_id=etl_conn_id)
+    load_hook = SnowflakeHook(snowflake_conn_id=load_conn_id)
+    load_connection = load_hook.get_conn()
 
-            offset = 0
-            batch_number = 1
+    offset = 0
+    chunk_index = 1
+    batch_size=200000
 
-            while True:
-                query = f"""
-                    SELECT {', '.join(columns)} 
-                    FROM {table} 
+
+    with etl_hook.get_conn() as etl_connection:
+
+        temp_table = f"{load_table_name}{chunk_index}"
+        query = f"""
+                    SELECT {', '.join(columns)}
+                    FROM {etl_table}
+                """
+        query += f"""WHERE {condition_query}
                 """
 
-                if table == "DW_BM.BMK_CUST_MKTG_AGR_MST":
-                    query += f"""
-                        WHERE MKTG_RFS_TRGT_YN = 'Y' 
-                        AND NOTC_PRRG_DT >= '{start_date}' 
-                        AND NOTC_PRRG_DT <= '{end_date}' 
-                        LIMIT {BATCH_SIZE} OFFSET {offset}
-                    """
-                elif table == "DW_BM.BMK_CUST_MKTG_AGR_EMAIL_DTL":
-                    query += f"""
-                        WHERE NOTC_PRRG_DT >= '{start_date}' 
-                        AND NOTC_PRRG_DT <= '{end_date}' 
-                        AND ETL_DTM >= '{fm_p_start}'
-                        AND ETL_DTM <= '{fm_p_end}'
-                        LIMIT {BATCH_SIZE} OFFSET {offset}
-                    """
+        print("==================[ORACLE QEURY]==================")
+        print(query)
+        df = pd.read_sql(query, etl_connection)
 
-                print(query)
+        for col in df.select_dtypes(include=['datetime', 'datetimetz']).columns:
+            df[col] = df[col].apply(
+                lambda x: None if pd.isnull(x) or x == pd.NaT or str(x).strip() in ['NaT', '']
+                else x.isoformat() if isinstance(x, pd.Timestamp) else str(x)
+            )
 
-                df = pd.read_sql(query, conn)
-                if df.empty:
-                    break
+        # NaN 값을 명확하게 None으로 변환
+        df.replace({np.nan: None}, inplace=True)
 
-                file_name = f"{TMP_DIR}/{table_name}_batch{batch_number}_{fm_p_end.strftime('%Y%m%d')}_{time_identifier}.parquet"
-                s3_path = f"s3://{S3_BUCKET_NAME}/dw/{schema}/{table_name}/{date_folder}/{fm_p_end.strftime('%Y%m%d')}-batch{batch_number}-{time_identifier}.parquet"
+        create_temp_table_query = f"""
+            CREATE TEMPORARY TABLE {load_schema}.{temp_table} AS
+            SELECT * FROM {load_table} WHERE 1=0;
+            """  # 빈 임시 테이블 생성
+        print("==================[create_temp_table_query]==================")
+        print(create_temp_table_query)
 
-                df.to_parquet(file_name, engine='pyarrow', index=False)
-                os.system(f"aws s3 cp {file_name} {s3_path}")
-                os.remove(file_name)
+        with load_connection.cursor() as load_cursor:
+            load_cursor.execute(create_temp_table_query)
 
-                offset += BATCH_SIZE
-                batch_number += 1
+            insert_query = f"""
+                INSERT INTO {load_schema}.{temp_table} ({", ".join(columns)})
+                VALUES ({", ".join(["%s"] * len(columns))});
+                """
+            print("==================[insert_query]==================")
+            print(insert_query)
 
-    except Exception as e:
-        print(f"Error processing table {table_name}: {e}")
+            # MERGE 쿼리 생성 (배치 처리)
+            values = df.where(pd.notnull(df), None).values.tolist()
+            load_cursor.executemany(insert_query, values)  # batch insert 실행
 
+            # 3️⃣ MERGE 실행
+            merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in pk_columns])
+
+            update_set = ", ".join(
+                [f"target.{col} = source.{col}" for col in columns if col not in pk_columns])
+            insert_columns = ", ".join(columns)
+            insert_values = ", ".join([f"source.{col}" for col in columns])
+
+            merge_query = f"""
+                MERGE INTO {load_table} AS target
+                USING {load_schema}.{temp_table} AS source
+                ON {merge_condition}
+                WHEN MATCHED THEN
+                    UPDATE SET {update_set}
+                WHEN NOT MATCHED THEN
+                    INSERT ({insert_columns})
+                    VALUES ({insert_values});
+                """
+
+            print("==================[merge_query]==================")
+            print(merge_query)
+
+            load_cursor.execute(merge_query)
+
+            offset += batch_size
+            chunk_index += 1
+
+
+    load_connection.close()
+    print("커넥션 종료")
 
 # Define the DAG
 with DAG(
         dag_id="dag_CDC_ODS_MKTG_AGR_01",
         schedule_interval=None,
         catchup=False,
-        tags=["현대홈쇼핑", "dag_DD01_0030_MKTG_AGR_TERM"]
+        tags=["현대홈쇼핑", "dag_DD01_0030_MKTG_AGR_TERM","ODS","역방향"]
 ) as dag:
-    previous_task = None
 
-    # Create a task for each table in a serial manner
-    for table in TABLE_NAME_LIST:
-        def create_task(table):
-            @task(task_id=f"task_{table['table'].replace('.', '_')}_TO_HDHS_c_01")
-            def process_table_task():
-                process_in_batches(table['table'], table['columns'])
+    task_CU_CUST_MKTG_MST_TO_HDHS = PythonOperator(
+        task_id="task_CU_CUST_MKTG_MST_TO_HDHS",
+        python_callable=snow_to_snow_merge,
+        op_args=[etl_conn_id, load_conn_id, BMK_CUST_MKTG_AGR_MST_etl_table, CU_CUST_MKTG_AGR_MST_load_table, BMK_CUST_MKTG_AGR_MST_COLUMNS, ['CUST_NO'],
+                 BMK_CUST_MKTG_AGR_MST_query]
+    )
 
-            return process_table_task
+    task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS = PythonOperator(
+        task_id="task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS",
+        python_callable=snow_to_snow_merge,
+        op_args=[etl_conn_id, load_conn_id, BMK_CUST_MKTG_AGR_EMAIL_DTL_etl_table, CU_MKTG_AGR_EMAIL_DTL_load_table, BMK_CUST_MKTG_AGR_EMAIL_DTL_COLUMNS, ['CUST_NO'],
+                 BMK_CUST_MKTG_AGR_EMAIL_DTL_query]
+    )
 
-
-        current_task = create_task(table)()
-
-        # Chain tasks in a serial order
-        if previous_task:
-            previous_task >> current_task
-
-        previous_task = current_task
+    task_CU_CUST_MKTG_MST_TO_HDHS >> task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS
