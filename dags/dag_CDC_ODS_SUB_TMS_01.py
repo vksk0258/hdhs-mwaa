@@ -1,6 +1,7 @@
 from airflow import DAG
 from operators.oracle_to_snowflake_merge_operator import OracleToSnowflakeMergeOperator
 from operators.oracle_to_snowflake_initial_load_operator import OracleToSnowflakeInitialLoadOperator
+from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
 import datetime
 import pendulum
 import boto3
@@ -63,12 +64,15 @@ oracle_conn_id = "conn_oracle_tms"
 # DAG 정의
 with DAG(
         dag_id="dag_CDC_ODS_SUB_TMS_01",  # DAG의 고유 식별자
-        schedule_interval='30 0 * * *',
-        start_date=pendulum.datetime(2025, 2, 23, tz="Asia/Seoul"),
+        schedule_interval='20 0 * * *',
+        start_date=pendulum.datetime(2025, 2, 24, tz="Asia/Seoul"),
         catchup=False,  # 과거 데이터 실행 스킵
         dagrun_timeout=datetime.timedelta(minutes=6000),  # DAG 실행 제한 시간
         tags=["현대홈쇼핑","TMS", "ODS"]  # DAG에 붙일 태그
 ) as dag:
+    task_ETL_SCHEDULE_c_01 = etlScheduleUpdateOperator(
+        task_id="task_ETL_SCHEDULE_c_01"
+    )
 
     task_TMS_APP_DEVICE_LIST = OracleToSnowflakeMergeOperator(
         task_id = "task_TMS_APP_DEVICE_LIST",
@@ -133,6 +137,6 @@ with DAG(
 
 
 
-    [task_TMS_APP_DEVICE_LIST , task_TMS_APP_USER_LIST, task_TMS_CAMP_SCHD_INFO]
+    task_ETL_SCHEDULE_c_01 >> [task_TMS_APP_DEVICE_LIST , task_TMS_APP_USER_LIST, task_TMS_CAMP_SCHD_INFO]
     task_TMS_APP_USER_LIST >> task_TMS_SITE_USER_LIST
     task_TMS_CAMP_SCHD_INFO >> task_TMS_CAMP_CHN_INFO

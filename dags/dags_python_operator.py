@@ -3,6 +3,16 @@ import datetime
 import pendulum
 import random
 from airflow.operators.python import PythonOperator
+from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+
+def snow_chg_wh(wh_size):
+    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
+    with snowflake_hook.get_conn() as snowflake_conn:
+        with snowflake_conn.cursor() as cursor:
+            chg_query = f"ALTER WAREHOUSE DW_ETL_WH SET WAREHOUSE_SIZE = '{wh_size}'"
+            print(f"수행 쿼리 : {chg_query}")
+            cursor.execute(chg_query)
+            print(f"수행 로그 : {cursor.fetchone()}")
 
 with DAG(
     dag_id="dags_python_operator",
@@ -16,6 +26,11 @@ with DAG(
     dagrun_timeout=datetime.timedelta(minutes=60),
     tags=["인프런",'python']
 ) as dag:
+    snow_chg_wh = PythonOperator(
+        task_id="snow_chg_wh",
+        python_callable=snow_chg_wh,
+        op_args=['2X-LARGE']
+    )
     def select_fruit(**kwargs):
         fruit = ['APPLE','BANANA','ORAGNE','AVOCADO']
         #0~3랜덤 정수 값
@@ -28,4 +43,4 @@ with DAG(
         python_callable=select_fruit
     )
 
-    py_t1
+    snow_chg_wh >> py_t1

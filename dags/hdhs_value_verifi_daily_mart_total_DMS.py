@@ -5,7 +5,8 @@ import pendulum  # 타임존 처리를 위한 라이브러리
 import datetime  # 날짜 및 시간 처리를 위한 모듈
 from airflow.models import Variable  # Airflow 변수 관리
 from airflow.decorators import task  # Airflow의 태스크를 정의하는 데코레이터
-import pandas as pd  # 데이터프레임 작업을 위한 pandas
+import boto3
+import json
 
 # Oracle Client 라이브러리 경로를 변수에서 가져옴
 client_path = Variable.get("client_path")
@@ -48,13 +49,61 @@ def get_verification_dict():
     return table_list
 
 
+def count_parquet_rows_s3_select(s3_bucket, s3_key):
+    """
+    S3 Select를 사용하여 Parquet 파일의 행 수를 직접 계산.
+    """
+    s3_client = boto3.client('s3')
+
+    query = "SELECT COUNT(*) FROM S3Object"
+
+    response = s3_client.select_object_content(
+        Bucket=s3_bucket,
+        Key=s3_key,
+        ExpressionType="SQL",
+        Expression=query,
+        InputSerialization={"Parquet": {}},
+        OutputSerialization={"JSON": {}},
+    )
+
+    for event in response["Payload"]:
+        if "Records" in event:
+            payload = event["Records"]["Payload"].decode("utf-8")
+            print(f"Debug: Raw Payload -> {payload}")  # 💡 추가된 디버깅 코드
+            try:
+                data = json.loads(payload)
+                return int(list(data.values())[0])  # 딕셔너리일 경우 첫 번째 값 사용
+            except Exception as e:
+                print(f"JSON Parsing Error: {e}, Payload: {payload}")
+
+    return 0  # 실패 시 0 반환
+
+
+def count_parquet_rows_optimized(s3_bucket, s3_prefix):
+    """
+    S3 Select를 사용하여 특정 S3 폴더 내 모든 Parquet 파일의 총 행 수를 계산.
+    """
+    s3_client = boto3.client('s3')
+    response = s3_client.list_objects_v2(Bucket=s3_bucket, Prefix=s3_prefix)
+
+    if "Contents" not in response:
+        return 0
+
+    parquet_files = [obj["Key"] for obj in response["Contents"] if obj["Key"].endswith(".parquet")]
+
+    total_rows = 0
+    for file in parquet_files:
+        total_rows += count_parquet_rows_s3_select(s3_bucket, file)
+
+    return total_rows
+
 # DAG 정의
 with DAG(
-    dag_id="hdhs_value_verifi_daily_mart_total",  # DAG의 고유 식별자
-    start_date=pendulum.datetime(2025, 2, 25, tz="Asia/Seoul"),
-    schedule_interval="0 11 * * *",
+    dag_id="hdhs_value_verifi_daily_mart_total_DMS",  # DAG의 고유 식별자
+    # start_date=pendulum.datetime(2025, 2, 25, tz="Asia/Seoul"),
+    schedule_interval=None,
     catchup=False,  # 과거 데이터 실행을 스킵
-    dagrun_timeout=datetime.timedelta(minutes=500),  # DAG 실행 제한 시간
+    dagrun_timeout=datetime.timedelta(minutes=2000),  # DAG 실행 제한 시간
     tags=["현대홈쇼핑","검증"]  # DAG에 붙일 태그
 ) as dag:
 
@@ -79,36 +128,53 @@ with DAG(
 
         value_list = []
 
-        for table, columns in table_list.items():
+        for table in table_list.items():
             try:
-                if columns:
-                    sum_columns = ", ".join([f"SUM({col})" for col in columns])
-                    ora_query = f"""SELECT COUNT(*), {sum_columns} 
-                                    FROM {table}
+                ora_query = f"""SELECT COUNT(*)
+                                FROM {table[0]}
                                 """
-                    result = oracle_cursor.execute(ora_query).fetchone()
-                    count_value = result[0]
-                    sum_values = [[columns[i], result[i + 1]] for i in range(len(columns))]
-                    value_list.append([count_value] + sum_values)
-                else:
-                    ora_query = f"""SELECT COUNT(*) 
-                                    FROM {table}
-                                    """
-                    result = oracle_cursor.execute(ora_query).fetchone()
-                    value_list.append([result[0]])
+                print(ora_query)
+                result = oracle_cursor.execute(ora_query).fetchone()
+                value_list.append([result[0]])
 
                 print(ora_query)
 
                 print(f"ORA RESULT : {value_list}")
+                ti.xcom_push(key='ora_data', value=value_list)
 
                 # 조회 결과를 XCom으로 전달
-                ti.xcom_push(key='ora_data', value=value_list)
             except Exception as e:
                 print(f"Error with value: {e}")
-
         # 커넥션 닫기
         oracle_cursor.close()
         oracle_connection.close()
+
+    @task(task_id='DMS_value_push_xcom')
+    def push_parquet_counts_to_xcom(**kwargs):
+        """
+        MWAA 태스크에서 실행되며, 각 S3 Parquet 테이블의 행 수를 계산하여 XCom으로 푸시.
+        """
+        ti = kwargs['ti']
+        table_list = ti.xcom_pull(key='verifi_list', task_ids='oracle_value_push_xcom')
+
+        S3_BUCKET_NAME = "hdhs-dw-migdata-s3"
+
+        skip_tables = ['BOD_ORD_CTPF_VACO_DTL', 'BOD_ORD_PTC','PAR_PHDS_ARLT_DLU_FCT_02','PAR_PHDS_ARLT_DLU_FCT','PMA_COPN_ANAL_DLU_FCT_01','PMA_COPN_ANAL_DLU_FCT_02']
+
+        result_dict = {}
+
+        for table in table_list:
+            schema, table_name = table.split('.')
+            if table_name in skip_tables:
+                result_dict[table_name] = 0
+                continue
+            s3_prefix = f"dw/dw_mart_temp/{schema}/{table_name}/"
+            print(f"Processing: {s3_prefix}")
+
+            row_count = count_parquet_rows_optimized(S3_BUCKET_NAME, s3_prefix)
+            result_dict[table_name] = row_count
+
+        ti.xcom_push(key='dms_data', value=result_dict)
 
 
     # Snowflake 데이터 조회 및 XCom으로 데이터 전달
@@ -131,22 +197,15 @@ with DAG(
         value_list = []  # 결과 저장 리스트
 
         # 테이블 목록 순회하며 쿼리 실행
-        for table, columns in table_list.items():
+        for table in table_list.items():
             try:
                 schema, table_name = table.split('.')
-                if columns:
-                    sum_columns = ", ".join([f"SUM({col})" for col in columns])
-                    snow_query = f"""SELECT COUNT(*), {sum_columns} 
-                                    FROM DW_OCI.{table_name}"""
-                    result = snowflake_cursor.execute(snow_query).fetchone()
-                    count_value = result[0]
-                    sum_values = [[columns[i], result[i + 1]] for i in range(len(columns))]
-                    value_list.append([count_value] + sum_values)
-                else:
-                    snow_query = f"""SELECT COUNT(*) 
-                                    FROM DW_OCI.{table_name}"""
-                    result = snowflake_cursor.execute(snow_query).fetchone()
-                    value_list.append([result[0]])
+
+                snow_query = f"""SELECT COUNT(*)
+                                FROM DW_OCI.{table_name}"""
+                print(snow_query)
+                result = snowflake_cursor.execute(snow_query).fetchone()
+                value_list.append([result[0]])
 
                 print(snow_query)
 
@@ -191,55 +250,28 @@ with DAG(
 
                 # XCom에서 Oracle 및 Snowflake 조회 결과 가져오기
                 snow_data = ti.xcom_pull(key='snow_data', task_ids='snowflake_value_push_xcom')[idx]
+                dms_data = ti.xcom_pull(key='dms_data', task_ids='DMS_value_push_xcom')[idx]
                 ora_data = ti.xcom_pull(key='ora_data', task_ids='oracle_value_push_xcom')[idx]
 
                 print(ora_data)
+                print(dms_data)
                 print(snow_data)
 
                 snow_cnt = int(snow_data[0])  # Snowflake 레코드 수
+                dms_cnt = int(dms_data[0])
                 ora_cnt = int(ora_data[0])  # Oracle 레코드 수
 
-                snow_sum_list = snow_data[1:]
-                ora_sum_list = ora_data[1:]
-
+                dms_minus_ora_cnt = dms_cnt - ora_cnt
                 ora_minus_snow_cnt = ora_cnt - snow_cnt
-
-                # 특정 테이블의 경우 SUM 값도 비교
-                if snow_sum_list and ora_sum_list:
-                    for snow_sum, ora_sum in zip(snow_sum_list, ora_sum_list):
-                        snow_col_name = snow_sum[0]
-                        snow_sum_value = round(float(snow_sum[1]), 3) if snow_sum[1] is not None else 0
-                        ora_col_name = ora_sum[0]
-                        ora_sum_value = round(float(ora_sum[1]), 3) if ora_sum[1] is not None else 0
-                        ora_minus_snow_sum = ora_sum_value - snow_sum_value
-                        sum_insert_query = """
-                                        INSERT INTO DW_LOAD_DB.VERIFI_DATA_MART.MART_DATA_SUM_VERIFI_LOG_TOTAL (
-                                            VERIFY_DATE, DATABASE_NAME, SCHEMA_NAME, TABLE_NAME, COLUMN_NAME,
-                                            ORA_SUM, SNOW_SUM, ORA_MINUS_SNOW_SUM
-                                        )
-                                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                                    """
-                        parameters = (
-                            execution_time,
-                            snow_db_name,
-                            schema_name,
-                            table_name,
-                            snow_col_name,
-                            ora_sum_value,
-                            snow_sum_value,
-                            ora_minus_snow_sum
-                        )
-                        snowflake_cursor.execute(sum_insert_query, parameters)
-
-
+                dms_minus_snow_cnt = dms_cnt - snow_cnt
 
                 # 비교 결과를 Snowflake 테이블에 삽입
                 cnt_insert_query = """
-                    INSERT INTO DW_LOAD_DB.VERIFI_DATA_MART.MART_DATA_COUNT_VERIFI_LOG_TOTAL (
-                        VERIFY_DATE, DATABASE_NAME, SCHEMA_NAME, TABLE_NAME, 
-                        ORA_CNT, SNOW_CNT, ORA_MINUS_SNOW_CNT
+                    INSERT INTO DW_LOAD_DB.VERIFI_DATA_MART.MART_DATA_COUNT_VERIFI_LOG_TOTAL_DMS (
+                        VERIFY_DATE, DATABASE_NAME, SCHEMA_NAME, TABLE_NAME,
+                        DMS_CNT, ORA_CNT, SNOW_CNT, DMS_MINUS_ORA_CNT, ORA_MINUS_SNOW_CNT, DMS_MINUS_SNOW_CNT
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 parameters = (
                     execution_time,
@@ -247,8 +279,11 @@ with DAG(
                     schema_name,
                     table_name,
                     ora_cnt,
+                    dms_cnt,
                     snow_cnt,
-                    ora_minus_snow_cnt
+                    dms_minus_ora_cnt,
+                    ora_minus_snow_cnt,
+                    dms_minus_snow_cnt
                 )
                 snowflake_cursor.execute(cnt_insert_query, parameters)
             except Exception as e:
@@ -260,4 +295,4 @@ with DAG(
         snowflake_connection.close()
 
     # 태스크 간의 의존성 설정
-    ora_push() >> snow_push() >> insert_result()
+    ora_push() >> push_parquet_counts_to_xcom() >> snow_push() >> insert_result()

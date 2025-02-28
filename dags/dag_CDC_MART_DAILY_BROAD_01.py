@@ -215,7 +215,7 @@ with DAG(
     task_SP_BOD_ORD_CTPF_VACO_DTL2 = PythonOperator(
         task_id="SP_BOD_ORD_CTPF_VACO_DTL2",
         python_callable=execute_procedure,
-        op_args=["SP_BOD_ORD_CTPF_VACO_DT2L", p_start, p_end],
+        op_args=["SP_BOD_ORD_CTPF_VACO_DTL2", p_start, p_end],
         trigger_rule="all_done"
     )
 
@@ -397,18 +397,18 @@ with DAG(
         trigger_rule="none_skipped"
     )
 
-    @task(task_id="wait_before_execution", trigger_rule="none_skipped")
-    def wait_before_execution():
-        print("Waiting for 5 minutes before proceeding...")
-        time.sleep(300)  # 300 seconds = 5 minutes
-        print("Wait is over. Proceeding to the next task.")
-
-    task_SP_HDHS_DAILY_DELETE = PythonOperator(
-        task_id="task_SP_HDHS_DAILY_DELETE",
-        python_callable=execute_procedure,
-        op_args=["SP_HDHS_DAILY_DELETE", p_start, p_end],
-        trigger_rule="none_skipped"
-    )
+    # @task(task_id="wait_before_execution", trigger_rule="none_skipped")
+    # def wait_before_execution():
+    #     print("Waiting for 5 minutes before proceeding...")
+    #     time.sleep(300)  # 300 seconds = 5 minutes
+    #     print("Wait is over. Proceeding to the next task.")
+    #
+    # task_SP_HDHS_DAILY_DELETE = PythonOperator(
+    #     task_id="task_SP_HDHS_DAILY_DELETE",
+    #     python_callable=execute_procedure,
+    #     op_args=["SP_HDHS_DAILY_DELETE", p_start, p_end],
+    #     trigger_rule="none_skipped"
+    # )
 
     [task_SP_DW_USE_RATIO, task_SP_BOD_ORD_CTPF_VACO_DTL]
 
@@ -422,5 +422,5 @@ with DAG(
 
     task_SP_BITM_SELL_ETC_EXP_ORD_D001 >> task_SP_RIA_DTBRC_ORD_EXP_FCT_D001 >> task_SP_BITM_SELL_ETC_EXP_ORD_FOR_SALE_NEWS_D001 >> task_SP_RIA_DTBRC_ORD_EXP_FCT_02_D001 >>task_SP_BITM_SELL_ETC_REAL_ORD_D001 >> task_SP_RIA_DTBRC_ORD_REAL_FCT_D001 >> task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D001 >> task_SP_RIA_DTBRC_ORD_REAL_FCT_02_D001 >> task_ETL_DAILY_LOG
 
-    [task_SP_RIA_BITM_ORD_CUST_FCT, task_SP_RIA_BITM_ORD_REAL_FCT_02_D001, task_ETL_DAILY_LOG] >> wait_before_execution() >> task_SP_HDHS_DAILY_DELETE
+    [task_SP_RIA_BITM_ORD_CUST_FCT, task_SP_RIA_BITM_ORD_REAL_FCT_02_D001, task_ETL_DAILY_LOG]
 

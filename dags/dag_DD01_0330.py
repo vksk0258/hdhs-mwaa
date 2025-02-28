@@ -8,8 +8,8 @@ parent_dir = "100_COM"
 
 with DAG(
     dag_id="dag_DD01_0330",
-    schedule_interval='50 4 * * *',
-    start_date=pendulum.datetime(2025, 2, 10, tz="Asia/Seoul"),
+    schedule_interval=None,
+    # start_date=pendulum.datetime(2025, 2, 10, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
     catchup=False,
     tags=[parent_dir,"Scheduled","현대홈쇼핑"]
@@ -53,6 +53,7 @@ with DAG(
         allowed_states=['success'], # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
         trigger_rule="all_done"
     )
+
 
     # [trigger_dag_CDC_ODS_DAILY_HMALL_TO_HDHS_01, trigger_dag_DD01_0330_CMS_01]
     #

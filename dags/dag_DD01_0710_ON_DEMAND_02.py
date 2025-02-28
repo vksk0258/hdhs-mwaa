@@ -1,19 +1,39 @@
 from airflow import DAG
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
+from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+from airflow.operators.python import PythonOperator
+from airflow.models import Variable
 from datetime import timedelta
 import pendulum
 
 parent_dir = "100_COM"
 
+snow_wh = Variable.get('1_batch_wh')
+
+def snow_chg_wh(wh_size):
+    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
+    with snowflake_hook.get_conn() as snowflake_conn:
+        with snowflake_conn.cursor() as cursor:
+            chg_query = f"ALTER WAREHOUSE DW_ETL_WH SET WAREHOUSE_SIZE = '{wh_size}'"
+            print(f"수행 쿼리 : {chg_query}")
+            cursor.execute(chg_query)
+            print(f"수행 로그 : {cursor.fetchone()}")
+
 with DAG(
     dag_id="dag_DD01_0710_ON_DEMAND_02",
-    schedule_interval='20 8 * * *',
-    start_date=pendulum.datetime(2025, 2, 20, tz="Asia/Seoul"),
+    schedule_interval=None,
+    # start_date=pendulum.datetime(2025, 2, 20, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
     catchup=False,
     tags=[parent_dir,"Scheduled","현대홈쇼핑"]
 ) as dag:
+    snow_chg_wh = PythonOperator(
+        task_id="snow_chg_wh",
+        python_callable=snow_chg_wh,
+        op_args=[snow_wh]
+    )
+
     task_ETL_SCHEDULE_c_01 = etlScheduleUpdateOperator(
         task_id="task_ETL_SCHEDULE_c_01"
     )
@@ -29,4 +49,4 @@ with DAG(
     )
 
 
-    task_ETL_SCHEDULE_c_01 >> trigger_dag_CDC_MART_ON_DEMAND_02
+    task_ETL_SCHEDULE_c_01 >> trigger_dag_CDC_MART_ON_DEMAND_02 >> snow_chg_wh

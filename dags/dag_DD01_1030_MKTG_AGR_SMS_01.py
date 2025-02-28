@@ -4,7 +4,6 @@ from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
 from datetime import timedelta
 import pendulum
 
-parent_dir = "100_COM"
 
 with DAG(
     dag_id="dag_DD01_1030_MKTG_AGR_SMS_01",

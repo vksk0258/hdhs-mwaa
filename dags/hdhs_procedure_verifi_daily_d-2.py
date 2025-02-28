@@ -13,7 +13,7 @@ execution_time = pendulum.now(KST)
 
 # DAG 정의
 with DAG(
-        dag_id="hdhs_procedure_verifi_daily",  # DAG의 고유 식별자
+        dag_id="hdhs_procedure_verifi_daily_d-2",  # DAG의 고유 식별자
         # start_date=pendulum.datetime(2025, 2, 10, tz="Asia/Seoul"),  # DAG 시작 날짜 및 타임존 설정
         schedule_interval=None,  # 매일 00시에 실행
         catchup=False,  # 과거 데이터 실행을 스킵
@@ -22,7 +22,10 @@ with DAG(
 ) as dag:
     @task(task_id='procedure_verification', retries=10, retry_delay=datetime.timedelta(seconds=10))
     def procedure_verification(**kwargs):
-        start_time = execution_time.format("YYYY-MM-DD 00:10:00")
+        start_time = execution_time.format("YYYY-MM-DD 20:28:00")
+        start_time_end = execution_time.format("YYYY-MM-DD 23:59:00")
+        start_time_d1 = execution_time.subtract(days=2).format("YYYY-MM-DD 00:10:00")
+        start_time_d1_end = execution_time.subtract(days=2).format("YYYY-MM-DD 08:00:00")
 
         # Snowflake와 Oracle의 데이터베이스 연결 설정
         snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
@@ -37,7 +40,8 @@ with DAG(
         procedure_list_query = f"""
                     SELECT PGMID, STARTTIME, ENDTIME, ST, JBPMT, READCNT, BYCNT, ERRCNT, UPDCNT, WRTCNT
                     FROM DW_ETL_DB.DW_ETC.JOB_RESULT 
-                    WHERE STARTTIME >= TO_DATE('{start_time}', 'YYYY-MM-DD HH24:MI:SS')
+                    WHERE STARTTIME >= TO_TIMESTAMP('{start_time}', 'YYYY-MM-DD HH24:MI:SS')
+                    AND STARTTIME < TO_TIMESTAMP('{start_time_end}', 'YYYY-MM-DD HH24:MI:SS')
                     """
 
         snowflake_cursor.execute(procedure_list_query)
@@ -54,14 +58,15 @@ with DAG(
                             WHERE PGMID = '{procedure[0]}' 
                             AND JBPMT = '{procedure[4]}'
                             AND STARTTIME = '{procedure[1].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}'
-                            ORDER BY STARTTIME DESC
+                            ORDER BY STARTTIME ASC
                             """
 
                     ora_query = f"""
                             SELECT PGMID, STARTTIME, ENDTIME, ST, JBPMT, READCNT, BYCNT, ERRCNT, UPDCNT, WRTCNT FROM DW_ETC.JOB_RESULT 
                             WHERE PGMID = '{procedure[0]}' 
                             AND JBPMT = '{procedure[4]}'
-                            AND STARTTIME >= TO_DATE('{start_time}', 'YYYY-MM-DD HH24:MI:SS')
+                            AND STARTTIME >= TO_TIMESTAMP('{start_time_d1}', 'YYYY-MM-DD HH24:MI:SS')
+                            AND STARTTIME < TO_TIMESTAMP('{start_time_d1_end}', 'YYYY-MM-DD HH24:MI:SS')
                             ORDER BY STARTTIME ASC
                             """
                 else:
@@ -70,21 +75,22 @@ with DAG(
                             WHERE PGMID = '{procedure[0]}' 
                             AND JBPMT IS NULL
                             AND STARTTIME = '{procedure[1].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}'
-                            ORDER BY STARTTIME DESC
+                            ORDER BY STARTTIME ASC
                             """
 
                     ora_query = f"""
                             SELECT PGMID, STARTTIME, ENDTIME, ST, JBPMT, READCNT, BYCNT, ERRCNT, UPDCNT, WRTCNT FROM DW_ETC.JOB_RESULT 
                             WHERE PGMID = '{procedure[0]}' 
                             AND JBPMT IS NULL
-                            AND STARTTIME >= TO_DATE('{start_time}', 'YYYY-MM-DD HH24:MI:SS')
+                            AND STARTTIME >= TO_TIMESTAMP('{start_time_d1}', 'YYYY-MM-DD HH24:MI:SS')
+                            AND STARTTIME < TO_TIMESTAMP('{start_time_d1_end}', 'YYYY-MM-DD HH24:MI:SS')
                             ORDER BY STARTTIME ASC
                             """
 
                 print(snow_query)
                 print(ora_query)
 
-                snow_results = snowflake_cursor.execute(snow_query).fetchall()[::-1]
+                snow_results = snowflake_cursor.execute(snow_query).fetchall()
                 ora_results = oracle_cursor.execute(ora_query).fetchall()
 
                 flag = None  # 기본값 설정
@@ -131,7 +137,7 @@ with DAG(
 
                     # 비교 결과를 Snowflake 테이블에 저장
                     isrt_query = f"""
-                                INSERT INTO DW_ETL_DB.DW_ETC.ORA_SNOW_DATA_PIPE_VAL
+                                INSERT INTO DW_ETL_DB.DW_ETC.ORA_SNOW_DATA_PIPE_VAL_d1
                                 VALUES ('{SMR_DT}',
                                         '{PGMID}',
                                         {ORA_START_TIME},
@@ -176,7 +182,7 @@ with DAG(
 
                 # 오류 발생 시 에러 정보 저장
                 error_query = f"""
-                        INSERT INTO DW_ETL_DB.DW_ETC.ORA_SNOW_DATA_PIPE_VAL (SMR_DT, PGMID, SNOW_START_TIME, SNOW_END_TIME,SNOW_ST, JBPMT, READ_CNT_ORA, BYCNT_ORA, ERRCNT_ORA, UPDCNT_ORA, WRTCNT_ORA, ERR_MSG, SNOW_EXEC_TIME)
+                        INSERT INTO DW_ETL_DB.DW_ETC.ORA_SNOW_DATA_PIPE_VAL_d1 (SMR_DT, PGMID, SNOW_START_TIME, SNOW_END_TIME,SNOW_ST, JBPMT, READ_CNT_ORA, BYCNT_ORA, ERRCNT_ORA, UPDCNT_ORA, WRTCNT_ORA, ERR_MSG, SNOW_EXEC_TIME)
                         VALUES ('{SMR_DT}', 
                                 '{PGMID}',
                                 {SNOW_START_TIME},

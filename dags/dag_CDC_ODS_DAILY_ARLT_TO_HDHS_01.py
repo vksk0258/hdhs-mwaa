@@ -17,12 +17,12 @@ p_end = params.get("$$P_END")
 
 KST = pendulum.timezone("Asia/Seoul")
 
-reverse_condition_query = f"""
+REVERSE_CONDITION_QUERY = f"""
 CHG_DTM >= TO_DATE('{p_start}' || '000000', 'YYYYMMDDHH24MISS') 
 AND CHG_DTM <= TO_DATE('{p_start}' || '235959', 'YYYYMMDDHH24MISS') + 1
 """
 
-forward_condition_query = f"""
+FORWARD_CONDITION_QUERY = f"""
 CHG_DTM >= TO_DATE('{p_start}' || '000000', 'YYYYMMDDHH24MISS') + 1
 AND CHG_DTM <= TO_DATE('{p_start}' || '235959', 'YYYYMMDDHH24MISS') + 1
 """
@@ -43,7 +43,7 @@ with DAG(
         snowflake_table="HDHS_DW.HES_RNTL_ARLT_DTL",
         columns=['*'],
         pk_columns=['SELL_MDA_GBCD', 'SLITM_CD', 'SMR_DT'],
-        condition_query=reverse_condition_query,
+        condition_query=REVERSE_CONDITION_QUERY,
         batch_size=200000,
         trigger_rule="all_done"
     )
@@ -56,7 +56,7 @@ with DAG(
         snowflake_table="DW_HSIS.HES_RNTL_ARLT_DTL",
         columns=['*'],
         pk_columns=['SELL_MDA_GBCD', 'SLITM_CD', 'SMR_DT'],
-        condition_query=forward_condition_query,
+        condition_query=FORWARD_CONDITION_QUERY,
         batch_size=200000,
         trigger_rule="all_done"
     )

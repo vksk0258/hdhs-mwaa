@@ -208,7 +208,7 @@ with DAG(
         columns = dagent_columns,
         pk_columns = dagent_primary_keys,
         condition_query=dagent_condition_query,
-        batch_size = 200000,
+        batch_size = 50000,
         retries=10,
         retry_delay=datetime.timedelta(seconds=10)
     )
@@ -222,7 +222,7 @@ with DAG(
         columns = hagent_columns,
         pk_columns = hagent_primary_keys,
         condition_query=hagent_condition_query,
-        batch_size = 200000,
+        batch_size = 50000,
         retries = 10,
         retry_delay = datetime.timedelta(seconds=10)
     )

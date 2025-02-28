@@ -1,6 +1,7 @@
 from airflow import DAG
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.operators.python import PythonOperator
+from operator.common import reverse_task_variables as var
 import numpy as np
 import pandas as pd
 import pendulum
@@ -9,21 +10,25 @@ import json
 
 # S3 parameters
 s3 = boto3.client('s3')
-bucket_name = "hdhs-dw-mwaa-s3"
-key = "param/wf_DD01_0030_DAILY_MAIN_01.json"
+bucket_name = var.bucket_name
+key = var.daily_key
 response = s3.get_object(Bucket=bucket_name, Key=key)
 params = json.load(response['Body'])
 
-p_start = params.get("$$P_START")
-p_end = params.get("$$P_END")
+daily_p_start = params.get("$$P_START")
+daily_p_end = params.get("$$P_END")
 
-# p_start = '20250210'
-# p_end = '20250210'
+key = var.on_demand_key
+response = s3.get_object(Bucket=bucket_name, Key=key)
+params = json.load(response['Body'])
+
+on_demand_p_start = params.get("$$P_START")
+on_demand_p_end = params.get("$$P_END")
 
 KST = pendulum.timezone("Asia/Seoul")
 
-condition_query = f"""APLY_DT >= TO_CHAR(DATEADD(DAY, 1,TO_DATE('{p_start}','YYYYMMDD')),'YYYYMMDD') 
-                    AND APLY_DT <= TO_CHAR(DATEADD(DAY, 1,TO_DATE('{p_end}','YYYYMMDD')),'YYYYMMDD')"""
+condition_query = f"""APLY_DT >= TO_CHAR(DATEADD(DAY, 1,TO_DATE('{daily_p_start}','YYYYMMDD')),'YYYYMMDD') 
+                    AND APLY_DT <= TO_CHAR(DATEADD(DAY, 1,TO_DATE('{daily_p_end}','YYYYMMDD')),'YYYYMMDD')"""
 
 # Column definitions
 RAR_REAL_SWRT_ETC_DTL_COLUMNS = [
@@ -115,7 +120,7 @@ def snow_to_snow_merge(etl_conn_id, load_conn_id, etl_table, load_table, columns
             )
 
         # NaN 값을 명확하게 None으로 변환
-        # df.replace({np.nan: None}, inplace=True)
+        df.replace({np.nan: None}, inplace=True)
 
         with load_connection.cursor() as load_cursor:
 
