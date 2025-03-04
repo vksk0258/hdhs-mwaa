@@ -55,23 +55,9 @@ def ora_to_snow_merge(etl_conn_id, load_conn_id, etl_table, load_table, columns,
         # NaN 값을 명확하게 None으로 변환
         df.replace({np.nan: None}, inplace=True)
 
+        print(df)
+
         with load_connection.cursor() as load_cursor:
-
-            create_temp_table_query = f"""
-                        CREATE TEMPORARY TABLE {load_schema}.{temp_table} AS
-                        SELECT * FROM {load_table} WHERE 1=0;
-                        """  # 빈 임시 테이블 생성
-            print("==================[create_temp_table_query]==================")
-            print(create_temp_table_query)
-
-            load_cursor.execute(create_temp_table_query)
-
-            insert_query = f"""
-                INSERT INTO {load_schema}.{temp_table} ({", ".join(columns)})
-                VALUES ({", ".join(["%s"] * len(columns))});
-                """
-            print("==================[insert_query]==================")
-            print(insert_query)
 
             # MERGE 쿼리 생성 (배치 처리)
             values = df.where(pd.notnull(df), None).values.tolist()
@@ -79,6 +65,24 @@ def ora_to_snow_merge(etl_conn_id, load_conn_id, etl_table, load_table, columns,
             batch_size = 10000  # 한 번에 실행할 최대 행 수
 
             for i in range(0, len(values), batch_size):
+                temp_table = f"{load_table_name}{chunk_index}"
+
+                create_temp_table_query = f"""
+                                        CREATE TEMPORARY TABLE {load_schema}.{temp_table} AS
+                                        SELECT * FROM {load_table} WHERE 1=0;
+                                        """  # 빈 임시 테이블 생성
+                print("==================[create_temp_table_query]==================")
+                print(create_temp_table_query)
+
+                load_cursor.execute(create_temp_table_query)
+
+                insert_query = f"""
+                                INSERT INTO {load_schema}.{temp_table} ({", ".join(columns)})
+                                VALUES ({", ".join(["%s"] * len(columns))});
+                                """
+                print("==================[insert_query]==================")
+                print(insert_query)
+
                 batch = values[i: i + batch_size]
                 load_cursor.executemany(insert_query, batch)
 
@@ -105,7 +109,9 @@ def ora_to_snow_merge(etl_conn_id, load_conn_id, etl_table, load_table, columns,
                 print(merge_query)
 
                 load_cursor.execute(merge_query)
+                print(f"{temp_table} 머지 완료!!!!")
 
+                chunk_index += 1
 
     load_connection.close()
     print("커넥션 종료")
@@ -116,7 +122,7 @@ AND CHG_DTM <= TO_DATE('{var.daily_main_p_end}' || '235959', 'YYYYMMDDHH24MISS')
 """
 
 CONDITION_QEURY2 = f"""
-WHERE CHG_DTM >= TO_DATE('{var.daily_main_p_start}' || '000000', 'YYYYMMDDHH24MISS') 
+WHERE CHG_DTM >= TO_DATE('{var.daily_main_p_start}' || '000000', 'YYYYMMDDHH24MISS')
 AND CHG_DTM <= TO_DATE('{var.daily_main_p_end}' || '235959', 'YYYYMMDDHH24MISS')
 """
 

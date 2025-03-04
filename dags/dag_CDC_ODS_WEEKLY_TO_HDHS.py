@@ -65,21 +65,6 @@ def snow_to_snow_merge(snow_conn_id, ora_conn_id, snow_table, ora_table, columns
 
         with ora_connection.cursor() as ora_cursor:
 
-            create_temp_table_query = f"""
-                        CREATE TEMPORARY TABLE {ora_schema}.{temp_table} AS
-                        SELECT * FROM {ora_table} WHERE 1=0;
-                        """  # 빈 임시 테이블 생성
-            print("==================[create_temp_table_query]==================")
-            print(create_temp_table_query)
-
-            ora_cursor.execute(create_temp_table_query)
-
-            insert_query = f"""
-                INSERT INTO {ora_schema}.{temp_table} ({", ".join(columns)})
-                VALUES ({", ".join(["%s"] * len(columns))});
-                """
-            print("==================[insert_query]==================")
-            print(insert_query)
 
             # MERGE 쿼리 생성 (배치 처리)
             values = df.where(pd.notnull(df), None).values.tolist()
@@ -87,6 +72,25 @@ def snow_to_snow_merge(snow_conn_id, ora_conn_id, snow_table, ora_table, columns
             batch_size = 10000  # 한 번에 실행할 최대 행 수
 
             for i in range(0, len(values), batch_size):
+
+                temp_table = f"{ora_table_name}{chunk_index}"
+
+                create_temp_table_query = f"""
+                                        CREATE TEMPORARY TABLE {ora_schema}.{temp_table} AS
+                                        SELECT * FROM {ora_table} WHERE 1=0;
+                                        """  # 빈 임시 테이블 생성
+                print("==================[create_temp_table_query]==================")
+                print(create_temp_table_query)
+
+                ora_cursor.execute(create_temp_table_query)
+
+                insert_query = f"""
+                                INSERT INTO {ora_schema}.{temp_table} ({", ".join(columns)})
+                                VALUES ({", ".join(["%s"] * len(columns))});
+                                """
+                print("==================[insert_query]==================")
+                print(insert_query)
+
                 batch = values[i: i + batch_size]
                 ora_cursor.executemany(insert_query, batch)
 
@@ -113,6 +117,9 @@ def snow_to_snow_merge(snow_conn_id, ora_conn_id, snow_table, ora_table, columns
                 print(merge_query)
 
                 ora_cursor.execute(merge_query)
+                print(f"{temp_table} 머지 완료!!!!")
+
+                chunk_index += 1
 
     ora_connection.close()
     print("커넥션 종료")
@@ -143,4 +150,50 @@ with DAG(
                  CONDITION_QUERY]
     )
 
-    task_RAR_EXP_SWRT_DTL
+    task_RAR_EXP_SWRT_ETC_DTL= PythonOperator(
+        task_id="task_RAR_EXP_SWRT_ETC_DTL",
+        python_callable=snow_to_snow_merge,
+        op_args=[snow_conn_id, ora_conn_id, var_dict['RAR_EXP_SWRT_ETC_DTL']['SNOW_TABLE'],
+                 var_dict['RAR_EXP_SWRT_ETC_DTL']['MAIN_TABLE'],
+                 var_dict['RAR_EXP_SWRT_ETC_DTL']['COLUMNS'], var_dict['RAR_EXP_SWRT_ETC_DTL']['PK_COLUMNS'],
+                 CONDITION_QUERY]
+    )
+
+    task_RAR_EXP_SWRT_MLB_DTL= PythonOperator(
+        task_id="task_RAR_EXP_SWRT_MLB_DTL",
+        python_callable=snow_to_snow_merge,
+        op_args=[snow_conn_id, ora_conn_id, var_dict['RAR_EXP_SWRT_MLB_DTL']['SNOW_TABLE'],
+                 var_dict['RAR_EXP_SWRT_MLB_DTL']['MAIN_TABLE'],
+                 var_dict['RAR_EXP_SWRT_MLB_DTL']['COLUMNS'], var_dict['RAR_EXP_SWRT_MLB_DTL']['PK_COLUMNS'],
+                 CONDITION_QUERY]
+    )
+
+    task_RAR_EXP_SWRT_ONLN_DTL= PythonOperator(
+            task_id="task_RAR_EXP_SWRT_ONLN_DTL",
+            python_callable=snow_to_snow_merge,
+            op_args=[snow_conn_id, ora_conn_id, var_dict['RAR_EXP_SWRT_ONLN_DTL']['SNOW_TABLE'],
+                     var_dict['RAR_EXP_SWRT_ONLN_DTL']['MAIN_TABLE'],
+                     var_dict['RAR_EXP_SWRT_ONLN_DTL']['COLUMNS'], var_dict['RAR_EXP_SWRT_ONLN_DTL']['PK_COLUMNS'],
+                     CONDITION_QUERY]
+        )
+
+    task_RAR_EXP_SWRT_ONLN_ETC_DTL= PythonOperator(
+            task_id="task_RAR_EXP_SWRT_ONLN_ETC_DTL",
+            python_callable=snow_to_snow_merge,
+            op_args=[snow_conn_id, ora_conn_id, var_dict['RAR_EXP_SWRT_ONLN_ETC_DTL']['SNOW_TABLE'],
+                     var_dict['RAR_EXP_SWRT_ONLN_ETC_DTL']['MAIN_TABLE'],
+                     var_dict['RAR_EXP_SWRT_ONLN_ETC_DTL']['COLUMNS'], var_dict['RAR_EXP_SWRT_ONLN_ETC_DTL']['PK_COLUMNS'],
+                     CONDITION_QUERY]
+        )
+
+    task_RCU_UPNT_JOIN_RATE_DTL = PythonOperator(
+        task_id="task_RCU_UPNT_JOIN_RATE_DTL",
+        python_callable=snow_to_snow_merge,
+        op_args=[snow_conn_id, ora_conn_id, var_dict['RCU_UPNT_JOIN_RATE_DTL']['SNOW_TABLE'],
+                 var_dict['RCU_UPNT_JOIN_RATE_DTL']['MAIN_TABLE'],
+                 var_dict['RCU_UPNT_JOIN_RATE_DTL']['COLUMNS'], var_dict['RCU_UPNT_JOIN_RATE_DTL']['PK_COLUMNS'],
+                 CONDITION_QUERY]
+    )
+
+    task_RAR_EXP_SWRT_DTL >> task_RAR_EXP_SWRT_ETC_DTL >> task_RAR_EXP_SWRT_MLB_DTL >> \
+    task_RAR_EXP_SWRT_ONLN_DTL >> task_RAR_EXP_SWRT_ONLN_ETC_DTL >> task_RCU_UPNT_JOIN_RATE_DTL

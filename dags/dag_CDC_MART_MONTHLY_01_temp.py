@@ -4,22 +4,15 @@ from airflow.decorators import task
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from common.common_call_procedure import execute_procedure, execute_procedure_dycl, log_etl_completion
 from datetime import datetime, timedelta
+from airflow.models import Variable
 import boto3
 import json
 
-# S3 parameters
-s3 = boto3.client('s3')
-bucket_name = "hdhs-dw-mwaa-s3"
-key = "param/wf_DD01_0030_MONTHLY_01.json"
-response = s3.get_object(Bucket=bucket_name, Key=key)
-params = json.load(response['Body'])
-
-p_start = params.get("$$P_START")
-p_end = params.get("$$P_END")
-
+p_start = Variable.get("start")
+p_end = Variable.get("end")
 
 with DAG(
-    dag_id="dag_CDC_MART_MONTHLY_01",
+    dag_id="dag_CDC_MART_MONTHLY_01_temp",
     schedule_interval=None,
     catchup=False,
     tags=["현대홈쇼핑", "MART프로시져"]
