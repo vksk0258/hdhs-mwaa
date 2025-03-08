@@ -49,7 +49,6 @@ def snow_to_snow_merge(snow_conn_id, ora_conn_id, snow_table, ora_table, columns
 
     with snow_hook.get_conn() as snow_connection:
 
-        temp_table = f"{ora_table_name}{chunk_index}"
         query = f"""
                     SELECT {', '.join(columns)}
                     FROM {snow_table}
@@ -73,21 +72,6 @@ def snow_to_snow_merge(snow_conn_id, ora_conn_id, snow_table, ora_table, columns
 
         with ora_connection.cursor() as ora_cursor:
 
-            create_temp_table_query = f"""
-                        CREATE TEMPORARY TABLE {ora_schema}.{temp_table} AS
-                        SELECT * FROM {ora_table} WHERE 1=0;
-                        """  # 빈 임시 테이블 생성
-            print("==================[create_temp_table_query]==================")
-            print(create_temp_table_query)
-
-            ora_cursor.execute(create_temp_table_query)
-
-            insert_query = f"""
-                INSERT INTO {ora_schema}.{temp_table} ({", ".join(columns)})
-                VALUES ({", ".join(["%s"] * len(columns))});
-                """
-            print("==================[insert_query]==================")
-            print(insert_query)
 
             # MERGE 쿼리 생성 (배치 처리)
             values = df.where(pd.notnull(df), None).values.tolist()
@@ -95,7 +79,29 @@ def snow_to_snow_merge(snow_conn_id, ora_conn_id, snow_table, ora_table, columns
             batch_size = 10000  # 한 번에 실행할 최대 행 수
 
             for i in range(0, len(values), batch_size):
+
+                temp_table = f"{ora_table_name}{chunk_index}"
+
+                create_temp_table_query = f"""
+                                        CREATE TEMPORARY TABLE {ora_schema}.{temp_table} AS
+                                        SELECT * FROM {ora_table} WHERE 1=0;
+                                        """  # 빈 임시 테이블 생성
+                print("==================[create_temp_table_query]==================")
+                print(create_temp_table_query)
+
+                ora_cursor.execute(create_temp_table_query)
+
+                insert_query = f"""
+                                INSERT INTO {ora_schema}.{temp_table} ({", ".join(columns)})
+                                VALUES ({", ".join(["%s"] * len(columns))});
+                                """
+                print("==================[insert_query]==================")
+                print(insert_query)
+
+
+
                 batch = values[i: i + batch_size]
+
                 ora_cursor.executemany(insert_query, batch)
 
                 # 3️⃣ MERGE 실행
@@ -121,6 +127,10 @@ def snow_to_snow_merge(snow_conn_id, ora_conn_id, snow_table, ora_table, columns
                 print(merge_query)
 
                 ora_cursor.execute(merge_query)
+
+                print(f"{temp_table} 머지 완료!!!!")
+
+                chunk_index += 1
 
     ora_connection.close()
     print("커넥션 종료")

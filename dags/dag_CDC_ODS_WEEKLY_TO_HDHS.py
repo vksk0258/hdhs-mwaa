@@ -132,7 +132,7 @@ AND CHG_DTM <= TO_DATE('{p_end}' || '235959', 'YYYYMMDDHH24MISS')
 """
 
 CONDITION_QUERY2 = f"""WHERE CHG_DTM >= TO_DATE('{p_start}' || '000000', 'YYYYMMDDHH24MISS') 
-AND CHG_DTM <= TO_DATE('{p_end} || '235959', 'YYYYMMDDHH24MISS')
+AND CHG_DTM <= TO_DATE('{p_end}' || '235959', 'YYYYMMDDHH24MISS')
 """
 
 # Define the DAG
@@ -142,58 +142,58 @@ with DAG(
     tags=["현대홈쇼핑","ODS","역방향"]
 ) as dag:
 
-    task_RAR_EXP_SWRT_DTL = PythonOperator(
-        task_id="task_RAR_EXP_SWRT_DTL",
+    task_HES_EXP_SWRT_DTL_TO_HDHS = PythonOperator(
+        task_id="task_HES_EXP_SWRT_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[snow_conn_id, ora_conn_id, var_dict['RAR_EXP_SWRT_DTL']['SNOW_TABLE'], var_dict['RAR_EXP_SWRT_DTL']['MAIN_TABLE'],
-                 var_dict['RAR_EXP_SWRT_DTL']['COLUMNS'], var_dict['RAR_EXP_SWRT_DTL']['PK_COLUMNS'],
+        op_args=[snow_conn_id, ora_conn_id, var_dict['task_HES_EXP_SWRT_DTL_TO_HDHS']['SNOW_TABLE'], var_dict['task_HES_EXP_SWRT_DTL_TO_HDHS']['MAIN_TABLE'],
+                 var_dict['task_HES_EXP_SWRT_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_EXP_SWRT_DTL_TO_HDHS']['PK_COLUMNS'],
                  CONDITION_QUERY]
     )
 
-    task_RAR_EXP_SWRT_ETC_DTL= PythonOperator(
-        task_id="task_RAR_EXP_SWRT_ETC_DTL",
+    task_HES_EXP_SWRT_ETC_DTL_TO_HDHS= PythonOperator(
+        task_id="task_HES_EXP_SWRT_ETC_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[snow_conn_id, ora_conn_id, var_dict['RAR_EXP_SWRT_ETC_DTL']['SNOW_TABLE'],
-                 var_dict['RAR_EXP_SWRT_ETC_DTL']['MAIN_TABLE'],
-                 var_dict['RAR_EXP_SWRT_ETC_DTL']['COLUMNS'], var_dict['RAR_EXP_SWRT_ETC_DTL']['PK_COLUMNS'],
+        op_args=[snow_conn_id, ora_conn_id, var_dict['task_HES_EXP_SWRT_ETC_DTL_TO_HDHS']['SNOW_TABLE'],
+                 var_dict['task_HES_EXP_SWRT_ETC_DTL_TO_HDHS']['MAIN_TABLE'],
+                 var_dict['task_HES_EXP_SWRT_ETC_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_EXP_SWRT_ETC_DTL_TO_HDHS']['PK_COLUMNS'],
                  CONDITION_QUERY]
     )
 
-    task_RAR_EXP_SWRT_MLB_DTL= PythonOperator(
-        task_id="task_RAR_EXP_SWRT_MLB_DTL",
+    task_HES_EXP_SWRT_MLB_DTL_TO_HDHS= PythonOperator(
+        task_id="task_HES_EXP_SWRT_MLB_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[snow_conn_id, ora_conn_id, var_dict['RAR_EXP_SWRT_MLB_DTL']['SNOW_TABLE'],
-                 var_dict['RAR_EXP_SWRT_MLB_DTL']['MAIN_TABLE'],
-                 var_dict['RAR_EXP_SWRT_MLB_DTL']['COLUMNS'], var_dict['RAR_EXP_SWRT_MLB_DTL']['PK_COLUMNS'],
+        op_args=[snow_conn_id, ora_conn_id, var_dict['task_HES_EXP_SWRT_MLB_DTL_TO_HDHS']['SNOW_TABLE'],
+                 var_dict['task_HES_EXP_SWRT_MLB_DTL_TO_HDHS']['MAIN_TABLE'],
+                 var_dict['task_HES_EXP_SWRT_MLB_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_EXP_SWRT_MLB_DTL_TO_HDHS']['PK_COLUMNS'],
                  CONDITION_QUERY]
     )
 
-    task_RAR_EXP_SWRT_ONLN_DTL= PythonOperator(
-            task_id="task_RAR_EXP_SWRT_ONLN_DTL",
+    task_HES_EXP_SWRT_ONLN_DTL_TO_HDHS= PythonOperator(
+            task_id="task_HES_EXP_SWRT_ONLN_DTL_TO_HDHS",
             python_callable=snow_to_snow_merge,
-            op_args=[snow_conn_id, ora_conn_id, var_dict['RAR_EXP_SWRT_ONLN_DTL']['SNOW_TABLE'],
-                     var_dict['RAR_EXP_SWRT_ONLN_DTL']['MAIN_TABLE'],
-                     var_dict['RAR_EXP_SWRT_ONLN_DTL']['COLUMNS'], var_dict['RAR_EXP_SWRT_ONLN_DTL']['PK_COLUMNS'],
+            op_args=[snow_conn_id, ora_conn_id, var_dict['task_HES_EXP_SWRT_ONLN_DTL_TO_HDHS']['SNOW_TABLE'],
+                     var_dict['task_HES_EXP_SWRT_ONLN_DTL_TO_HDHS']['MAIN_TABLE'],
+                     var_dict['task_HES_EXP_SWRT_ONLN_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_EXP_SWRT_ONLN_DTL_TO_HDHS']['PK_COLUMNS'],
                      CONDITION_QUERY]
         )
 
-    task_RAR_EXP_SWRT_ONLN_ETC_DTL= PythonOperator(
-            task_id="task_RAR_EXP_SWRT_ONLN_ETC_DTL",
+    task_HES_EXP_SWRT_ONLN_ETC_DTL_TO_HDHS= PythonOperator(
+            task_id="task_HES_EXP_SWRT_ONLN_ETC_DTL_TO_HDHS",
             python_callable=snow_to_snow_merge,
-            op_args=[snow_conn_id, ora_conn_id, var_dict['RAR_EXP_SWRT_ONLN_ETC_DTL']['SNOW_TABLE'],
-                     var_dict['RAR_EXP_SWRT_ONLN_ETC_DTL']['MAIN_TABLE'],
-                     var_dict['RAR_EXP_SWRT_ONLN_ETC_DTL']['COLUMNS'], var_dict['RAR_EXP_SWRT_ONLN_ETC_DTL']['PK_COLUMNS'],
+            op_args=[snow_conn_id, ora_conn_id, var_dict['task_HES_EXP_SWRT_ONLN_ETC_DTL_TO_HDHS']['SNOW_TABLE'],
+                     var_dict['task_HES_EXP_SWRT_ONLN_ETC_DTL_TO_HDHS']['MAIN_TABLE'],
+                     var_dict['task_HES_EXP_SWRT_ONLN_ETC_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_EXP_SWRT_ONLN_ETC_DTL_TO_HDHS']['PK_COLUMNS'],
                      CONDITION_QUERY]
         )
 
-    task_RCU_UPNT_JOIN_RATE_DTL = PythonOperator(
-        task_id="task_RCU_UPNT_JOIN_RATE_DTL",
+    task_RCU_UPNT_JOIN_RATE_DTL_TO_HDHS = PythonOperator(
+        task_id="task_RCU_UPNT_JOIN_RATE_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[snow_conn_id, ora_conn_id, var_dict['RCU_UPNT_JOIN_RATE_DTL']['SNOW_TABLE'],
-                 var_dict['RCU_UPNT_JOIN_RATE_DTL']['MAIN_TABLE'],
-                 var_dict['RCU_UPNT_JOIN_RATE_DTL']['COLUMNS'], var_dict['RCU_UPNT_JOIN_RATE_DTL']['PK_COLUMNS'],
+        op_args=[snow_conn_id, ora_conn_id, var_dict['task_RCU_UPNT_JOIN_RATE_DTL_TO_HDHS']['SNOW_TABLE'],
+                 var_dict['task_RCU_UPNT_JOIN_RATE_DTL_TO_HDHS']['MAIN_TABLE'],
+                 var_dict['task_RCU_UPNT_JOIN_RATE_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RCU_UPNT_JOIN_RATE_DTL_TO_HDHS']['PK_COLUMNS'],
                  CONDITION_QUERY]
     )
 
-    task_RAR_EXP_SWRT_DTL >> task_RAR_EXP_SWRT_ETC_DTL >> task_RAR_EXP_SWRT_MLB_DTL >> \
-    task_RAR_EXP_SWRT_ONLN_DTL >> task_RAR_EXP_SWRT_ONLN_ETC_DTL >> task_RCU_UPNT_JOIN_RATE_DTL
+    task_HES_EXP_SWRT_DTL_TO_HDHS >> task_HES_EXP_SWRT_ETC_DTL_TO_HDHS >> task_HES_EXP_SWRT_MLB_DTL_TO_HDHS >> \
+    task_HES_EXP_SWRT_ONLN_DTL_TO_HDHS >> task_HES_EXP_SWRT_ONLN_ETC_DTL_TO_HDHS >> task_RCU_UPNT_JOIN_RATE_DTL_TO_HDHS

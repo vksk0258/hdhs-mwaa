@@ -14,8 +14,8 @@ execution_time = pendulum.now(KST)
 # DAG 정의
 with DAG(
         dag_id="hdhs_procedure_verifi_daily",  # DAG의 고유 식별자
-        # start_date=pendulum.datetime(2025, 2, 10, tz="Asia/Seoul"),  # DAG 시작 날짜 및 타임존 설정
-        schedule_interval=None,  # 매일 00시에 실행
+        start_date=pendulum.datetime(2025, 3, 6, tz="Asia/Seoul"),  # DAG 시작 날짜 및 타임존 설정
+        schedule_interval="0 9 * * *",  # 매일 00시에 실행
         catchup=False,  # 과거 데이터 실행을 스킵
         dagrun_timeout=datetime.timedelta(minutes=500),  # DAG 실행 제한 시간
         tags=["현대홈쇼핑", "검증"]  # DAG에 붙일 태그

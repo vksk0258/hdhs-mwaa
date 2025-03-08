@@ -92,7 +92,7 @@ with DAG(
     send_error_info = SimpleHttpOperator(
         task_id='send_error_info',
         http_conn_id='conn_hdhs_notify_api',
-        endpoint='/api/co/cor/v1/untd-notf/insert-send',
+        endpoint='/api/dw/cor/v1/untd-notf/insert-send',
         method='POST',
         headers={
             'Content-Type': 'application/json',

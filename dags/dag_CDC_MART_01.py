@@ -10,7 +10,7 @@ import json
 with DAG(
     dag_id="dag_CDC_MART_01",
     schedule_interval=None,
-    tags=["현대홈쇼핑","DD01_0010_DAILY_MAIN"]
+    tags=["현대홈쇼핑" ,"DD01_0010_DAILY_MAIN"]
 ) as dag:
     trigger_dag_CDC_MART_LEV_01 = TriggerDagRunOperator(
         task_id='trigger_dag_CDC_MART_LEV_01',

@@ -33,12 +33,12 @@ with DAG(
     task_SP_BMK_CUST_VLID_TERM_EMAIL_DTL = PythonOperator(
         task_id="task_SP_BMK_CUST_VLID_TERM_EMAIL_DTL",
         python_callable=execute_procedure,
-        op_args=["SP_BMK_CUST_VLID_TERM_EMAIL_DTL", p_start, p_end, 'conn_snowflake_etl'],
+        op_args=["SP_BMK_CUST_VLID_TERM_EMAIL_DTL", p_start, p_end, 'conn_snowflake_insu'],
         trigger_rule="all_done"
     )
 
-    task_SP_DWCU_CUST_SMS_DROPT = PythonOperator(
-        task_id="task_SP_DWCU_CUST_SMS_DROPT",
+    task_SP_DWCU_CUST_SMS_DROP = PythonOperator(
+        task_id="task_SP_DWCU_CUST_SMS_DROP",
         python_callable=execute_procedure,
         op_args=["SP_DWCU_CUST_SMS_DROP", p_start, p_end, 'conn_snowflake_etl'],
         trigger_rule="all_done"
@@ -53,7 +53,7 @@ with DAG(
 
     task_SP_BCU_CUST_STAT_MST >> \
     task_SP_BMK_CUST_VLID_TERM_EMAIL_DTL >> \
-    task_SP_DWCU_CUST_SMS_DROPT >> \
+    task_SP_DWCU_CUST_SMS_DROP >> \
     task_SP_DWCU_CUST_INSU_DROP
 
 

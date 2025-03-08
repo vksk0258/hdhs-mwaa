@@ -90,7 +90,7 @@ with DAG(
     task_SP_BMK_CUST_MKTG_AGR_HIS = PythonOperator(
         task_id="task_SP_BMK_CUST_MKTG_AGR_HIS",
         python_callable=execute_procedure,
-        op_args=["SP_BMK_CUST_MKTG_AGR_HIS", p_start, p_end, 'conn_snowflake_etl'],
+        op_args=["SP_BMK_CUST_MKTG_AGR_HIS", p_start, p_end, 'conn_snowflake_insu'],
         trigger_rule="all_done"
     )
 

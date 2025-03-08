@@ -26,13 +26,13 @@ with DAG(
     task_SP_BMK_CUST_MKTG_AGR_MST_01 = PythonOperator(
         task_id="task_SP_BMK_CUST_MKTG_AGR_MST_01",
         python_callable=execute_procedure,
-        op_args=["SP_BMK_CUST_MKTG_AGR_MST", p_start, p_end, 'conn_snowflake_etl'],
+        op_args=["SP_BMK_CUST_MKTG_AGR_MST", p_start, p_end, 'conn_snowflake_insu'],
         trigger_rule="all_done"
     )
 
     task_SP_BMK_CUST_MKTG_AGR_EMAIL_DTL_01 = PythonOperator(
         task_id="task_SP_BMK_CUST_MKTG_AGR_EMAIL_DTL_01",
         python_callable=execute_procedure,
-        op_args=["SP_BMK_CUST_MKTG_AGR_EMAIL_DTL", p_start, p_end, 'conn_snowflake_etl'],
+        op_args=["SP_BMK_CUST_MKTG_AGR_EMAIL_DTL", p_start, p_end, 'conn_snowflake_insu'],
         trigger_rule="all_done"
     )

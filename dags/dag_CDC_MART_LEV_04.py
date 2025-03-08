@@ -107,7 +107,7 @@ with DAG(
     )
 
     task_SP_ROD_VEN_CUST_ORD_DTL = PythonOperator(
-        task_id="task_SP_ROD_VEN_CUST_ORD_DTLM",
+        task_id="task_SP_ROD_VEN_CUST_ORD_DTM",
         python_callable=execute_procedure,
         op_args=["SP_ROD_VEN_CUST_ORD_DTL", p_start, p_end, 'conn_snowflake_etl'],
         trigger_rule="all_done"

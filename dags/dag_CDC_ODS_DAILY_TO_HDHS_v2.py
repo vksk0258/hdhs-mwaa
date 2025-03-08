@@ -30,7 +30,6 @@ def snow_to_snow_merge(etl_conn_id, load_conn_id, etl_table, load_table, columns
 
     with etl_hook.get_conn() as etl_connection:
 
-        temp_table = f"{load_table_name}{chunk_index}"
         query = f"""
                     SELECT {', '.join(columns)}
                     FROM {etl_table}
@@ -54,28 +53,32 @@ def snow_to_snow_merge(etl_conn_id, load_conn_id, etl_table, load_table, columns
 
         with load_connection.cursor() as load_cursor:
 
-            create_temp_table_query = f"""
-                        CREATE TEMPORARY TABLE {load_schema}.{temp_table} AS
-                        SELECT * FROM {load_table} WHERE 1=0;
-                        """  # 빈 임시 테이블 생성
-            print("==================[create_temp_table_query]==================")
-            print(create_temp_table_query)
-
-            load_cursor.execute(create_temp_table_query)
-
-            insert_query = f"""
-                INSERT INTO {load_schema}.{temp_table} ({", ".join(columns)})
-                VALUES ({", ".join(["%s"] * len(columns))});
-                """
-            print("==================[insert_query]==================")
-            print(insert_query)
-
             # MERGE 쿼리 생성 (배치 처리)
             values = df.where(pd.notnull(df), None).values.tolist()
 
             batch_size = 10000  # 한 번에 실행할 최대 행 수
 
             for i in range(0, len(values), batch_size):
+
+                temp_table = f"{load_table_name}{chunk_index}"
+
+                create_temp_table_query = f"""
+                                        CREATE TEMPORARY TABLE {load_schema}.{temp_table} AS
+                                        SELECT * FROM {load_table} WHERE 1=0;
+                                        """  # 빈 임시 테이블 생성
+                print("==================[create_temp_table_query]==================")
+                print(create_temp_table_query)
+
+                load_cursor.execute(create_temp_table_query)
+
+                insert_query = f"""
+                                INSERT INTO {load_schema}.{temp_table} ({", ".join(columns)})
+                                VALUES ({", ".join(["%s"] * len(columns))});
+                                """
+                print("==================[insert_query]==================")
+                print(insert_query)
+
+
                 batch = values[i: i + batch_size]
                 load_cursor.executemany(insert_query, batch)
 
@@ -103,6 +106,10 @@ def snow_to_snow_merge(etl_conn_id, load_conn_id, etl_table, load_table, columns
 
                 load_cursor.execute(merge_query)
 
+                print(f"{temp_table} 머지 완료!!!!")
+
+                chunk_index += 1
+
 
     load_connection.close()
     print("커넥션 종료")
@@ -111,29 +118,29 @@ def snow_to_snow_merge(etl_conn_id, load_conn_id, etl_table, load_table, columns
 etl_conn_id = 'conn_snowflake_etl'
 load_conn_id = 'conn_snow_load'
 
-BCU_CUST_TNDC_INF_QEURY = f"""WHERE SMR_DT BETWEEN TO_DATE('{var.daily_main_p_start}', 'YYYYMMDD')
+task_BCU_CUST_TNDC_INF_TO_HDHS_QEURY = f"""WHERE SMR_DT BETWEEN TO_DATE('{var.daily_main_p_start}', 'YYYYMMDD')
 AND TO_DATE('{var.daily_main_p_end}', 'YYYYMMDD')
 """
 
-BMK_CUST_MKTG_AGR_MST_QEURY = f"""WHERE MKTG_RFS_TRGT_YN = 'Y' 
+task_CU_CUST_MKTG_MST_TO_HDHS_QEURY = f"""WHERE MKTG_RFS_TRGT_YN = 'Y' 
 AND NOTC_PRRG_DT BETWEEN TO_CHAR(TO_DATE('{var.daily_main_p_start}' , 'YYYYMMDD') + 1 , 'YYYYMMDD') 
 AND TO_CHAR(TO_DATE('{var.daily_main_p_end}' , 'YYYYMMDD') + 1 , 'YYYYMMDD')
 """
 
-BCU_CUST_STAT_MST_QUERY = f"""WHERE ETL_DTM BETWEEN DATEADD(DAY, 1, TO_TIMESTAMP('{var.daily_main_p_start}' || '000000', 'YYYYMMDDHH24MISS'))
+task_CU_CUST_STAT_DTL_TO_HDHS_QUERY = f"""WHERE ETL_DTM BETWEEN DATEADD(DAY, 1, TO_TIMESTAMP('{var.daily_main_p_start}' || '000000', 'YYYYMMDDHH24MISS'))
 AND DATEADD(DAY, 1, TO_TIMESTAMP('{var.daily_main_p_end}' || '235959', 'YYYYMMDDHH24MISS'))
 OR VLID_TERM_EXPY_PRRG_DT 
 BETWEEN TO_DATE('{var.daily_main_p_start}', 'YYYYMMDD')
 AND TO_DATE('{var.daily_main_p_end}', 'YYYYMMDD')
 """
 
-BMK_CUST_MKTG_AGR_EMAIL_DTL_QEURY = f"""WHERE NOTC_PRRG_DT BETWEEN DATEADD(DAY, 1, TO_DATE('{var.daily_main_p_start}', 'YYYYMMDD'))
+task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS_QEURY = f"""WHERE NOTC_PRRG_DT BETWEEN DATEADD(DAY, 1, TO_DATE('{var.daily_main_p_start}', 'YYYYMMDD'))
 AND DATEADD(DAY, 1, TO_DATE('{var.daily_main_p_end}', 'YYYYMMDD'))
 AND ETL_DTM BETWEEN TIMESTAMP_NTZ_FROM_PARTS(YEAR(CURRENT_DATE), MONTH(CURRENT_DATE), DAY(CURRENT_DATE), 0, 0, 0) 
 AND TIMESTAMP_NTZ_FROM_PARTS(YEAR(CURRENT_DATE), MONTH(CURRENT_DATE), DAY(CURRENT_DATE), 23, 59, 59)
 """
 
-BMK_CUST_VLID_TERM_EMAIL_DTL_QUERY = f"""WHERE ETL_DTM BETWEEN DATEADD(DAY, 1, TO_TIMESTAMP('{var.daily_main_p_start}' || '000000', 'YYYYMMDDHH24MISS'))
+task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS_QUERY = f"""WHERE ETL_DTM BETWEEN DATEADD(DAY, 1, TO_TIMESTAMP('{var.daily_main_p_start}' || '000000', 'YYYYMMDDHH24MISS'))
 AND DATEADD(DAY, 1, TO_TIMESTAMP('{var.daily_main_p_end}' || '235959', 'YYYYMMDDHH24MISS'))
 """
 
@@ -164,57 +171,57 @@ with DAG(
     task_RAR_REAL_SWRT_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_REAL_SWRT_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[etl_conn_id, load_conn_id, var_dict['RAR_REAL_SWRT_DTL']['ETL_TABLE'], var_dict['RAR_REAL_SWRT_DTL']['LOAD_TABLE'],
-                 var_dict['RAR_REAL_SWRT_DTL']['COLUMNS'], ['APLY_DT','BFMT_NO','BRND_CD','ITEM_D_CSF_CD','ITEM_L_CSF_CD','ITEM_M_CSF_CD','ITEM_S_CSF_CD','SELL_MDA_GBCD','SLITM_CD'],
+        op_args=[etl_conn_id, load_conn_id, var_dict['task_RAR_REAL_SWRT_DTL_TO_HDHS']['ETL_TABLE'], var_dict['task_RAR_REAL_SWRT_DTL_TO_HDHS']['LOAD_TABLE'],
+                 var_dict['task_RAR_REAL_SWRT_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_REAL_SWRT_DTL_TO_HDHS']['PK_COLUMNS'],
                  REAL_SWERT_QEURY]
     )
 
     task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[etl_conn_id, load_conn_id, var_dict['RAR_REAL_SWRT_ETC_DTL']['ETL_TABLE'], var_dict['RAR_REAL_SWRT_ETC_DTL']['LOAD_TABLE'],
-                 var_dict['RAR_REAL_SWRT_ETC_DTL']['COLUMNS'], ['APLY_DT','BFMT_NO','BRND_CD','BROD_MDA_GBCD','ITEM_D_CSF_CD','ITEM_L_CSF_CD','ITEM_M_CSF_CD','ITEM_S_CSF_CD','SELL_MDA_GBCD','SLITM_CD'],
+        op_args=[etl_conn_id, load_conn_id, var_dict['task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS']['ETL_TABLE'], var_dict['task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS']['LOAD_TABLE'],
+                 var_dict['task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS']['PK_COLUMNS'],
                  REAL_SWERT_QEURY]
     )
 
     task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[etl_conn_id, load_conn_id, var_dict['RAR_REAL_SWRT_ONLN_DTL']['ETL_TABLE'], var_dict['RAR_REAL_SWRT_ONLN_DTL']['LOAD_TABLE'],
-                 var_dict['RAR_REAL_SWRT_ONLN_DTL']['COLUMNS'], ['APLY_DT','BFMT_NO','BRND_CD','ITEM_D_CSF_CD','ITEM_L_CSF_CD','ITEM_M_CSF_CD','ITEM_S_CSF_CD','SELL_MDA_GBCD','SLITM_CD'],
+        op_args=[etl_conn_id, load_conn_id, var_dict['task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS']['ETL_TABLE'], var_dict['task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS']['LOAD_TABLE'],
+                 var_dict['task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS']['PK_COLUMNS'],
                  REAL_SWERT_QEURY]
     )
 
     task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[etl_conn_id, load_conn_id, var_dict['RAR_REAL_SWRT_ONLN_ETC_DTL']['ETL_TABLE'], var_dict['RAR_REAL_SWRT_ONLN_ETC_DTL']['LOAD_TABLE'],
-                 var_dict['RAR_REAL_SWRT_ONLN_ETC_DTL']['COLUMNS'], ['APLY_DT','BFMT_NO','BRND_CD','BROD_MDA_GBCD','ITEM_D_CSF_CD','ITEM_L_CSF_CD','ITEM_M_CSF_CD','ITEM_S_CSF_CD','SELL_MDA_GBCD','SLITM_CD'],
+        op_args=[etl_conn_id, load_conn_id, var_dict['task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS']['ETL_TABLE'], var_dict['task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS']['LOAD_TABLE'],
+                 var_dict['task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS']['PK_COLUMNS'],
                  REAL_SWERT_QEURY]
     )
 
     task_CU_CUST_MKTG_MST_TO_HDHS = PythonOperator(
         task_id="task_CU_CUST_MKTG_MST_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[etl_conn_id, load_conn_id, var_dict['BMK_CUST_MKTG_AGR_MST']['ETL_TABLE'], var_dict['BMK_CUST_MKTG_AGR_MST']['LOAD_TABLE'],
-                 var_dict['BMK_CUST_MKTG_AGR_MST']['COLUMNS'], ['CUST_NO'],
-                 BMK_CUST_MKTG_AGR_MST_QEURY]
+        op_args=[etl_conn_id, load_conn_id, var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['ETL_TABLE'], var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['LOAD_TABLE'],
+                 var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['COLUMNS'], var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['PK_COLUMNS'],
+                 task_CU_CUST_MKTG_MST_TO_HDHS_QEURY]
     )
 
     task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS = PythonOperator(
         task_id="task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[etl_conn_id, load_conn_id, var_dict['BMK_CUST_MKTG_AGR_EMAIL_DTL']['ETL_TABLE'], var_dict['BMK_CUST_MKTG_AGR_EMAIL_DTL']['LOAD_TABLE'],
-                 var_dict['BMK_CUST_MKTG_AGR_EMAIL_DTL']['COLUMNS'], ['CUST_NO'],
-                 BMK_CUST_MKTG_AGR_EMAIL_DTL_QEURY]
+        op_args=[etl_conn_id, load_conn_id, var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['ETL_TABLE'], var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['LOAD_TABLE'],
+                 var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['COLUMNS'], var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['PK_COLUMNS'],
+                 task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS_QEURY]
     )
 
     task_BCU_CUST_TNDC_INF_TO_HDHS = PythonOperator(
         task_id="task_BCU_CUST_TNDC_INF_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[etl_conn_id, load_conn_id, var_dict['BCU_CUST_TNDC_INF']['ETL_TABLE'], var_dict['BCU_CUST_TNDC_INF']['LOAD_TABLE'],
-                 var_dict['BCU_CUST_TNDC_INF']['COLUMNS'], ['CUST_NO', 'SMR_DT'],
-                 BCU_CUST_TNDC_INF_QEURY]
+        op_args=[etl_conn_id, load_conn_id, var_dict['task_BCU_CUST_TNDC_INF_TO_HDHS']['ETL_TABLE'], var_dict['task_BCU_CUST_TNDC_INF_TO_HDHS']['LOAD_TABLE'],
+                 var_dict['task_BCU_CUST_TNDC_INF_TO_HDHS']['COLUMNS'], var_dict['task_BCU_CUST_TNDC_INF_TO_HDHS']['PK_COLUMNS'],
+                 task_BCU_CUST_TNDC_INF_TO_HDHS_QEURY]
     )
 
     # task_HES_RNTL_ARLT_DTL = PythonOperator(
@@ -228,32 +235,32 @@ with DAG(
     task_CU_CUST_STAT_DTL_TO_HDHS = PythonOperator(
         task_id="task_CU_CUST_STAT_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[etl_conn_id, load_conn_id, var_dict['BCU_CUST_STAT_MST']['ETL_TABLE'], var_dict['BCU_CUST_STAT_MST']['LOAD_TABLE'],
-                 var_dict['BCU_CUST_STAT_MST']['COLUMNS'], ['CUST_NO'],
-                 BCU_CUST_STAT_MST_QUERY]
+        op_args=[etl_conn_id, load_conn_id, var_dict['task_CU_CUST_STAT_DTL_TO_HDHS']['ETL_TABLE'], var_dict['task_CU_CUST_STAT_DTL_TO_HDHS']['LOAD_TABLE'],
+                 var_dict['task_CU_CUST_STAT_DTL_TO_HDHS']['COLUMNS'], var_dict['task_CU_CUST_STAT_DTL_TO_HDHS']['PK_COLUMNS'],
+                 task_CU_CUST_STAT_DTL_TO_HDHS_QUERY]
     )
 
     task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS = PythonOperator(
         task_id="task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[etl_conn_id, load_conn_id, var_dict['BMK_CUST_VLID_TERM_EMAIL_DTL']['ETL_TABLE'], var_dict['BMK_CUST_VLID_TERM_EMAIL_DTL']['LOAD_TABLE'],
-                 var_dict['BMK_CUST_VLID_TERM_EMAIL_DTL']['COLUMNS'], ['CUST_NO'],
-                 BMK_CUST_VLID_TERM_EMAIL_DTL_QUERY]
+        op_args=[etl_conn_id, load_conn_id, var_dict['task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS']['ETL_TABLE'], var_dict['task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS']['LOAD_TABLE'],
+                 var_dict['task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS']['COLUMNS'], var_dict['task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS']['PK_COLUMNS'],
+                 task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS_QUERY]
     )
 
     task_BOD_ORD_DTL_TO_HDHS = PythonOperator(
         task_id="task_BOD_ORD_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[etl_conn_id, load_conn_id, var_dict['BOD_ORD_DTL']['ETL_TABLE'], var_dict['BOD_ORD_DTL']['LOAD_TABLE'],
-                 var_dict['BOD_ORD_DTL']['COLUMNS'], ['ORD_NO', 'ORD_PTC_SEQ'],
+        op_args=[etl_conn_id, load_conn_id, var_dict['task_BOD_ORD_DTL_TO_HDHS']['ETL_TABLE'], var_dict['task_BOD_ORD_DTL_TO_HDHS']['LOAD_TABLE'],
+                 var_dict['task_BOD_ORD_DTL_TO_HDHS']['COLUMNS'], var_dict['task_BOD_ORD_DTL_TO_HDHS']['PK_COLUMNS'],
                  ETL_DTM_QUERY]
     )
 
     task_RDM_SELL_MDA_DIM_TO_HDHS = PythonOperator(
         task_id="task_RDM_SELL_MDA_DIM",
         python_callable=snow_to_snow_merge,
-        op_args=[etl_conn_id, load_conn_id, var_dict['RDM_SELL_MDA_DIM']['ETL_TABLE'], var_dict['RDM_SELL_MDA_DIM']['LOAD_TABLE'],
-                 var_dict['RDM_SELL_MDA_DIM']['COLUMNS'], ['SELL_MDA_NO'],
+        op_args=[etl_conn_id, load_conn_id, var_dict['task_RDM_SELL_MDA_DIM_TO_HDHS']['ETL_TABLE'], var_dict['task_RDM_SELL_MDA_DIM_TO_HDHS']['LOAD_TABLE'],
+                 var_dict['task_RDM_SELL_MDA_DIM_TO_HDHS']['COLUMNS'], var_dict['task_RDM_SELL_MDA_DIM_TO_HDHS']['PK_COLUMNS'],
                  ETL_DTM_QUERY]
     )
 
@@ -261,8 +268,8 @@ with DAG(
     task_RCA_MDA_AREA_CALL_HOU_FCT_TO_HDHS = PythonOperator(
         task_id="task_RCA_MDA_AREA_CALL_HOU_FCT_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[etl_conn_id, load_conn_id, var_dict['RCA_MDA_AREA_CALL_HOU_FCT']['ETL_TABLE'], var_dict['RCA_MDA_AREA_CALL_HOU_FCT']['LOAD_TABLE'],
-                 var_dict['RCA_MDA_AREA_CALL_HOU_FCT']['COLUMNS'], ['PROC_DT','PROC_TIME'],
+        op_args=[etl_conn_id, load_conn_id, var_dict['task_RCA_MDA_AREA_CALL_HOU_FCT_TO_HDHS']['ETL_TABLE'], var_dict['task_RCA_MDA_AREA_CALL_HOU_FCT_TO_HDHS']['LOAD_TABLE'],
+                 var_dict['task_RCA_MDA_AREA_CALL_HOU_FCT_TO_HDHS']['COLUMNS'], var_dict['task_RCA_MDA_AREA_CALL_HOU_FCT_TO_HDHS']['PK_COLUMNS'],
                  ETL_DTM_QUERY]
     )
 

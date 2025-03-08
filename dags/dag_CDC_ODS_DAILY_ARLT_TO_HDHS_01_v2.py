@@ -142,11 +142,11 @@ with DAG(
     schedule_interval=None,
     tags=["현대홈쇼핑","dag_DD01_0630_DAILY_BROAD_01","ODS","역방향"]
 ) as dag:
-    task_HES_RNTL_ARLT_DTL_TO_HDHS = PythonOperator(
-        task_id="task_HES_RNTL_ARLT_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge,
-        op_args=[etl_conn_id,load_conn_id, etl_table, load_table, columns,['SELL_MDA_GBCD','SLITM_CD','SMR_DT'],reverse_condition_query]
-    )
+    # task_HES_RNTL_ARLT_DTL_TO_HDHS = PythonOperator(
+    #     task_id="task_HES_RNTL_ARLT_DTL_TO_HDHS",
+    #     python_callable=snow_to_snow_merge,
+    #     op_args=[etl_conn_id,load_conn_id, etl_table, load_table, columns,['SELL_MDA_GBCD','SLITM_CD','SMR_DT'],reverse_condition_query]
+    # )
 
     task_HES_RNTL_ARLT_DTL = PythonOperator(
         task_id="task_HES_RNTL_ARLT_DTL",
@@ -155,4 +155,4 @@ with DAG(
                  forward_condition_query]
     )
 
-    task_HES_RNTL_ARLT_DTL_TO_HDHS >> task_HES_RNTL_ARLT_DTL
+    task_HES_RNTL_ARLT_DTL

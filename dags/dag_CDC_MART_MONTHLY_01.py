@@ -30,6 +30,8 @@ with DAG(
             return ['task_SP_ROD_CUST_PET_GRD_INF', 'task_SP_RCU_HMALL_CUST_GRD_DTL']
         elif (datetime.strptime(p_end, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")[6:8] == '01':
             return ['task_SP_DAU_SMS_DELETE', 'task_SP_COPY_STTC', 'task_SP_RPD_DPRCH_ITEM_MOTH_STCK_INF']
+        elif p_end[6:8] == '02':
+            return 'task_SP_PCU_CUST_ANAL_FCT_UPDT'
         elif p_end[6:8] == '03':
             return 'task_SP_RCU_MOTH_MDA_CUST_D3_SMR'
         elif p_end[6:8] == '14':
@@ -219,7 +221,7 @@ with DAG(
     )
 
     check_monthly(p_end) >> [task_SP_ROD_CUST_PET_GRD_INF, task_SP_RCU_HMALL_CUST_GRD_DTL, task_SP_DAU_SMS_DELETE, \
-    task_SP_COPY_STTC, task_SP_RPD_DPRCH_ITEM_MOTH_STCK_INF, task_SP_RCU_MOTH_MDA_CUST_D3_SMR, task_SP_RCU_MOTH_MDA_CUST_SMR]
+    task_SP_COPY_STTC, task_SP_RPD_DPRCH_ITEM_MOTH_STCK_INF, task_SP_RCU_MOTH_MDA_CUST_D3_SMR, task_SP_RCU_MOTH_MDA_CUST_SMR, task_SP_PCU_CUST_ANAL_FCT_UPDT]
 
     task_SP_RCU_HMALL_CUST_GRD_DTL >> task_SP_RCU_GGC_MOTH_SMR >> task_SP_BCU_CUST_MST_UPDATE >> task_SP_PCU_CUST_AGR_MOTH_FCT_02 >> task_SP_PCU_CUST_AGR_MOTH_FCT_03
 
@@ -233,8 +235,6 @@ with DAG(
     task_SP_RAR_EXP_SWRT_HMALL_DTL >> task_SP_RAR_VEN_CNTB_RATE_SMR >> task_SP_RMA_WINT_INSM_CMISR_INF
 
     task_SP_RPD_DPRCH_ITEM_MOTH_STCK_INF >> task_SP_RIA_KWRD_PGM_ACHV_RATE_SMR
-
-    task_SP_RCU_MOTH_MDA_CUST_D3_SMR >> task_SP_PCU_CUST_ANAL_FCT_UPDT
 
     task_SP_RCU_MOTH_MDA_CUST_SMR >> task_SP_ACCLN_SALE_DTL
 
