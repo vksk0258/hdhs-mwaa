@@ -1,6 +1,7 @@
 from airflow import DAG
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.operators.python import PythonOperator
+from common.notify_error_functions import notify_api_on_error
 import numpy as np
 import pandas as pd
 import pendulum
@@ -158,18 +159,22 @@ with DAG(
         tags=["현대홈쇼핑", "dag_DD01_0030_MKTG_AGR_TERM","ODS","역방향"]
 ) as dag:
 
-    task_CU_CUST_MKTG_MST_TO_HDHS = PythonOperator(
-        task_id="task_CU_CUST_MKTG_MST_TO_HDHS",
+    task_CU_CUST_MKTG_AGR_MST_TO_HDHS = PythonOperator(
+        task_id="task_CU_CUST_MKTG_MST_AGR_TO_HDHS",
         python_callable=snow_to_snow_merge,
         op_args=[etl_conn_id, load_conn_id, BMK_CUST_MKTG_AGR_MST_etl_table, CU_CUST_MKTG_AGR_MST_load_table, BMK_CUST_MKTG_AGR_MST_COLUMNS, ['CUST_NO'],
-                 BMK_CUST_MKTG_AGR_MST_query]
+                 BMK_CUST_MKTG_AGR_MST_query],
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS = PythonOperator(
         task_id="task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
         op_args=[etl_conn_id, load_conn_id, BMK_CUST_MKTG_AGR_EMAIL_DTL_etl_table, CU_MKTG_AGR_EMAIL_DTL_load_table, BMK_CUST_MKTG_AGR_EMAIL_DTL_COLUMNS, ['CUST_NO'],
-                 BMK_CUST_MKTG_AGR_EMAIL_DTL_query]
+                 BMK_CUST_MKTG_AGR_EMAIL_DTL_query],
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
-    task_CU_CUST_MKTG_MST_TO_HDHS >> task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS
+    task_CU_CUST_MKTG_AGR_MST_TO_HDHS >> task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS

@@ -1,6 +1,7 @@
 from airflow import DAG
 from operators.oracle_to_snowflake_merge_operator import OracleToSnowflakeMergeOperator
 import datetime
+from common.notify_error_functions import notify_api_on_error
 import pendulum
 import boto3
 import json
@@ -45,7 +46,10 @@ with DAG(
         pk_columns=['SELL_MDA_GBCD', 'SLITM_CD', 'SMR_DT'],
         condition_query=REVERSE_CONDITION_QUERY,
         batch_size=200000,
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        on_failure_callback=notify_api_on_error
+
+
     )
 
     task_HES_RNTL_ARLT_DTL = OracleToSnowflakeMergeOperator(
@@ -58,7 +62,9 @@ with DAG(
         pk_columns=['SELL_MDA_GBCD', 'SLITM_CD', 'SMR_DT'],
         condition_query=FORWARD_CONDITION_QUERY,
         batch_size=200000,
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        on_failure_callback=notify_api_on_error
+
     )
 
     task_HES_RNTL_ARLT_DTL_TO_HDHS >> task_HES_RNTL_ARLT_DTL

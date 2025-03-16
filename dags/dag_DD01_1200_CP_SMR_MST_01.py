@@ -8,7 +8,7 @@ parent_dir = "100_COM"
 
 with DAG(
     dag_id="dag_DD01_1200_CP_SMR_MST_01",
-    schedule_interval='0 12 * * *',
+    schedule_interval='0 3,12 * * *',
     start_date=pendulum.datetime(2025, 2, 9, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
     catchup=False,

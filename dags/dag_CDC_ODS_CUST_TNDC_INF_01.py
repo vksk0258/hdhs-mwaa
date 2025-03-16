@@ -1,6 +1,7 @@
 from airflow import DAG
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.operators.python import PythonOperator
+from common.notify_error_functions import notify_api_on_error
 import numpy as np
 import pandas as pd
 import pendulum
@@ -144,7 +145,10 @@ with DAG(
         task_id="task_BCU_CUST_TNDC_INF_TO_HDHS",
         python_callable=snow_to_snow_merge,
         op_args=[etl_conn_id, load_conn_id, etl_table, load_table, columns, ['CUST_NO', 'SMR_DT'],
-                 reverse_condition_query]
+                 reverse_condition_query],
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+
     )
 
     task_BCU_CUST_TNDC_INF_TO_HDHS

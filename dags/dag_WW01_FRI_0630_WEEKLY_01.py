@@ -11,7 +11,7 @@ with DAG(
     # 크론탭 형식: '30 6 * * 5' -> 매주 금요일 06:30에 자동 실행
     # (분 30, 시 6, 일 *, 월 *, 요일 5 = 금요일)
     schedule_interval='30 6 * * 5',
-    start_date=pendulum.datetime(2025, 2, 10, tz="Asia/Seoul"),
+    start_date=pendulum.datetime(2025, 3, 9, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
     catchup=False,
     tags=[parent_dir,"Scheduled","현대홈쇼핑"]

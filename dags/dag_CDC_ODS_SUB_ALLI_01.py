@@ -2,7 +2,9 @@ from airflow import DAG
 from airflow.decorators import task
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
 import numpy as np
+from common.notify_error_functions import notify_api_on_error
 import pendulum
 import datetime
 import pandas as pd
@@ -64,7 +66,7 @@ def process_in_batches(table, columns, pk_columns):
 
     schema, table_name = table.split('.')
 
-    temp_table_name = table_name+"_temp"
+    temp_table_name = table_name+"_TEMP"
 
     tmp_dir = f"/tmp/postgre_{temp_table_name}"
     s3_prefix = f"dw/dms_full_load/{schema}/{temp_table_name}/"
@@ -127,7 +129,7 @@ def process_in_batches(table, columns, pk_columns):
         with snowflake_conn.cursor() as snowflake_cursor:
 
             create_temp_table_query = f"""
-                            CREATE TEMPORARY TABLE {schema}.{temp_table_name} AS
+                            CREATE OR REPLACE TABLE {schema}.{temp_table_name} AS
                             SELECT * FROM {schema}.{table_name} WHERE 1=0;
                             """  # 빈 임시 테이블 생성
 
@@ -139,6 +141,7 @@ def process_in_batches(table, columns, pk_columns):
             print("임시 테이블 생성 성공!")
 
             snowflake_cursor.execute(f"CALL DW_LOAD_DB.CONFIG.PROC_INIT_COPY('DW_LOAD_DB', '{schema}', '{temp_table_name}')")
+            print(f"CALL DW_LOAD_DB.CONFIG.PROC_INIT_COPY('DW_LOAD_DB', '{schema}', '{temp_table_name}')")
 
             print("임시 테이블 데이터 로드 성공!")
 
@@ -150,16 +153,28 @@ def process_in_batches(table, columns, pk_columns):
             insert_columns = ", ".join(columns)
             insert_values = ", ".join([f"source.{col}" for col in columns])
 
+            # PARTITION BY 구문을 자동으로 만듦
+            partition_key = ", ".join(pk_columns)
+            order_key = "CHG_DTM DESC"  # 정렬 기준은 필요에 따라 바꾸세요
+
             merge_query = f"""
-                            MERGE INTO {schema}.{table_name} AS target
-                            USING {schema}.{temp_table_name} AS source
-                            ON {merge_condition}
-                            WHEN MATCHED THEN
-                                UPDATE SET {update_set}
-                            WHEN NOT MATCHED THEN
-                                INSERT ({insert_columns})
-                                VALUES ({insert_values});
-                            """
+                MERGE INTO {schema}.{table_name} AS target
+                USING (
+                    SELECT *
+                    FROM (
+                        SELECT *,
+                               ROW_NUMBER() OVER (PARTITION BY {partition_key} ORDER BY {order_key}) AS rn
+                        FROM {schema}.{temp_table_name}
+                    ) sub
+                    WHERE rn = 1
+                ) AS source
+                ON {merge_condition}
+                WHEN MATCHED THEN
+                    UPDATE SET {update_set}
+                WHEN NOT MATCHED THEN
+                    INSERT ({insert_columns})
+                    VALUES ({insert_values});
+            """
 
             print("==================[merge_query]==================")
             print(merge_query)
@@ -171,54 +186,81 @@ def process_in_batches(table, columns, pk_columns):
 # Define the DAG
 with DAG(
     dag_id="dag_CDC_ODS_SUB_ALLI_01",
-    schedule_interval=None,
-    catchup=False,
-    tags=["현대홈쇼핑","DD01_0010_DAILY_MAIN"]
+    schedule_interval='0 1 * * *',
+    start_date=pendulum.datetime(2025, 3, 10, tz="Asia/Seoul"),
+    catchup=False,  # 과거 데이터 실행 스킵
+    tags=["현대홈쇼핑","DD01_0010_DAILY_MAIN","Scheduled"]
 ) as dag:
-    @task(task_id='task_AM_ALML_MD_VEN_INTL_SETUP_DTL_I')
-    def task_AM_ALML_MD_VEN_INTL_SETUP_DTL(table,**kwargs):
+    task_ETL_SCHEDULE_c_01 = etlScheduleUpdateOperator(
+        task_id="task_ETL_SCHEDULE_c_01"
+    )
+    @task(task_id='task_AM_ALML_MD_VEN_INTL_SETUP_DTL_I',
+          trigger_rule="all_done",
+          provide_context=True,
+          on_failure_callback=notify_api_on_error)
+    def task_AM_ALML_MD_VEN_INTL_SETUP_DTL(table, **kwargs):
+        s3_bucket_name = "hdhs-dw-migdata-s3"
+        tmp_dir = "/tmp/postgre"
 
-        current_time = kwargs['data_interval_end'].in_tz(KST)
-        date_folder = current_time.strftime('%Y/%m/%d')
-
-        time_identifier = fm_p_end.strftime('%H%M%S')
-
-        if not os.path.exists(TMP_DIR):
-            os.makedirs(TMP_DIR)
+        os.makedirs(tmp_dir, exist_ok=True)
 
         schema, table_name = table.split('.')
 
-        try:
-            with postgres_hook.get_conn() as postgres_conn:
-                query = f"SELECT * FROM {table_name}"
-                df = pd.read_sql(query, postgres_conn)
+        s3_prefix = f"dw/dms_full_load/{schema}/{table_name}/"
+
+        # 기존 파일 삭제
+        delete_existing_files(s3_bucket_name, s3_prefix)
+
+        chunk_index = 1
+        while True:
+            s3_key = f"{s3_prefix}LOAD{chunk_index:08d}.parquet"
+            offset = (chunk_index - 1) * BATCH_SIZE
+
+            with postgres_hook.get_conn() as conn:
+                query = f"""
+                        SELECT *
+                        FROM {table_name}
+                        LIMIT {BATCH_SIZE} OFFSET {offset}
+                    """
+                df = pd.read_sql(query, conn)
 
             if df.empty:
-                print(f"No data to process for table {table} in the given time window.")
-                return
+                print("No more data to process for this table.")
+                break
 
-            file_name = f"{TMP_DIR}/{table_name}_{fm_p_end.strftime('%Y%m%d')}_{time_identifier}.parquet"
-            s3_path = f"s3://{S3_BUCKET_NAME}/dw/{schema}/{table_name}/{date_folder}/{fm_p_end.strftime('%Y%m%d')}-{time_identifier}.parquet"
+            for col in df.select_dtypes(include=['datetime', 'datetimetz']).columns:
+                df[col] = df[col].apply(
+                    lambda x: None if pd.isnull(x) or x == pd.NaT or str(x).strip() in ['NaT', '']
+                    else x.isoformat() if isinstance(x, pd.Timestamp) else str(x)
+                )
 
+            df.replace({np.nan: None}, inplace=True)
+
+            file_name = f"{tmp_dir}/LOAD{chunk_index:08d}.parquet"
             df.to_parquet(file_name, engine='pyarrow', index=False)
-            print(f"Data saved to {file_name}")
-
-            os.system(f"aws s3 cp {file_name} {s3_path}")
-            print(f"Uploaded {file_name} to {s3_path}")
-
+            os.system(f"aws s3 cp {file_name} s3://{s3_bucket_name}/{s3_key}")
             os.remove(file_name)
-            print(f"Deleted {file_name} from local directory")
 
-        except Exception as e:
-            print(f"Error processing table {table}: {e}")
+            chunk_index += 1
 
-    @task(task_id='task_AM_ALML_INTL_EXCP_SETUP_DTL')
+        with snowflake_hook.get_conn() as conn:
+            print(f"CALL DW_LOAD_DB.CONFIG.PROC_INIT_COPY('DW_LOAD_DB', '{schema}', '{table_name}')")
+            conn.cursor().execute(f"CALL DW_LOAD_DB.CONFIG.PROC_INIT_COPY('DW_LOAD_DB', '{schema}', '{table_name}')")
+
+
+    @task(task_id='task_AM_ALML_INTL_EXCP_SETUP_DTL',
+          trigger_rule="all_done",
+          provide_context=True,
+          on_failure_callback=notify_api_on_error)
     def task_AM_ALML_INTL_EXCP_SETUP_DTL(table):
         process_in_batches(table, INTL_EXCP_SETUP_DTL_COLUMNS, INTL_EXCP_SETUP_DTL_pk)
 
-    @task(task_id='task_AM_ALML_ITEM_INTL_DTL')
+    @task(task_id='task_AM_ALML_ITEM_INTL_DTL',
+          trigger_rule="all_done",
+          provide_context=True,
+          on_failure_callback=notify_api_on_error)
     def task_AM_ALML_ITEM_INTL_DTL(table):
         process_in_batches(table, ITEM_INTL_DTL_COLUMNS, ITEM_INTL_DTL_pk)
 
     # Task execution
-    task_AM_ALML_MD_VEN_INTL_SETUP_DTL(TABLE_NAME_LIST[0]) >> task_AM_ALML_INTL_EXCP_SETUP_DTL(TABLE_NAME_LIST[1]) >> task_AM_ALML_ITEM_INTL_DTL(TABLE_NAME_LIST[2])
+    task_ETL_SCHEDULE_c_01 >> task_AM_ALML_MD_VEN_INTL_SETUP_DTL(TABLE_NAME_LIST[0]) >> task_AM_ALML_INTL_EXCP_SETUP_DTL(TABLE_NAME_LIST[1]) >> task_AM_ALML_ITEM_INTL_DTL(TABLE_NAME_LIST[2])

@@ -1,6 +1,8 @@
 import pandas as pd
 from airflow import DAG
 from datetime import datetime, timedelta
+from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+from common.notify_error_functions import notify_api_on_error
 from airflow.decorators import task
 import os
 import boto3
@@ -34,9 +36,11 @@ with DAG(
     schedule_interval='50 1 * * *',
     start_date=pendulum.datetime(2025, 2, 23, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
-    tags=["현대홈쇼핑", "DD01_0010_DAILY_MAIN", "CTI", 'Flat File']
+    tags=["현대홈쇼핑", "DD01_0010_DAILY_MAIN", "CTI", 'Flat File',"Scheduled"]
 ) as dag:
-    @task(task_id='seoul_logfile_conv')
+    @task(task_id='seoul_logfile_conv',
+        provide_context=True,
+        on_failure_callback=notify_api_on_error,)
     def seoul_logfile_cov(**kwargs):
         yesterday = kwargs['data_interval_end'].in_tz(KST) - timedelta(days=1)
         yestermmdd = yesterday.strftime('%m%d')
@@ -84,7 +88,9 @@ with DAG(
         return f"s3://{bucket}/{s3_output_path}"
 
 
-    @task(task_id='cheongju_logfile_conv')
+    @task(task_id='cheongju_logfile_conv',
+        provide_context=True,
+        on_failure_callback=notify_api_on_error,)
     def cheongju_logfile_cov(**kwargs):
         yesterday = kwargs['data_interval_end'].in_tz(KST) - timedelta(days=1)
         yestermmdd = yesterday.strftime('%m%d')
@@ -131,7 +137,9 @@ with DAG(
         # Return the S3 path for downstream tasks
         return f"s3://{bucket}/{s3_output_path}"
 
-    @task
+    @task(task_id='logfile_data_insert',
+        provide_context=True,
+        on_failure_callback=notify_api_on_error,)
     def logfile_data_insert(**kwargs):
         TMP_DIR = "/tmp/CTI_incremental"
         current_time = kwargs['data_interval_end'].in_tz(KST)
@@ -181,7 +189,7 @@ with DAG(
             'UCID': df['UCID'].str[1:21],
             'ACD': df['ACD'],
             'PROC_DATE': yesteryymmdd,
-            'PROC_TIME': df['PROC_TIME'].str.lstrip(),
+            'PROC_TIME': df['PROC_TIME'].str.lstrip().str[:12],  # 변경
             'TRED': df['TRED'],
             'CALL_ID': df['CALL_ID'].str[1:6],
             'MESG': df['MESG'],
@@ -195,14 +203,26 @@ with DAG(
 
         df = pd.DataFrame(transformed_data, columns=tgt_columns)
 
-        if not df.empty:
-            file_name = f"{TMP_DIR}/{table_name}_{current_time.strftime('%Y%m%d')}-{time_identifier}.parquet"
+        snow_hook = SnowflakeHook(snowflake_conn_id='conn_snow_load')
+        with snow_hook.get_conn() as snow_connection:
+            with snow_connection.cursor() as snow_cursor:
+                columns = ",".join(df.columns)
+                placeholders = ",".join(["%s"] * len(df.columns))
 
-            os.makedirs(TMP_DIR, exist_ok=True)
-            df.to_parquet(file_name, engine='pyarrow', index=False)
-            s3_client.upload_file(file_name, S3_BUCKET_NAME, f"dw/mwaa_etl_load/{schema}/{table_name}/{date_folder}/{file_name.split('/')[-1]}")
-            os.remove(file_name)
-        else:
-            print(f"No data to process for table {schema}.{table_name} in the given time window.")
+                insert_query = f"INSERT INTO {schema}.{table_name} ({columns}) VALUES ({placeholders})"
+
+                # 데이터 변환 (tuple로 변환)
+                data_tuples = [tuple(row) for row in df.to_numpy()]
+
+                # ✅ 5만건씩 Batch Insert 실행
+                batch_size = 50000
+                total_rows = len(data_tuples)
+
+                for i in range(0, total_rows, batch_size):
+                    batch = data_tuples[i: i + batch_size]
+                    snow_cursor.executemany(insert_query, batch)
+                    snow_connection.commit()
+                    print(f"✅ {min(i + batch_size, total_rows)} / {total_rows}건 INSERT 완료")
+
 
     [seoul_logfile_cov(),cheongju_logfile_cov()] >> logfile_data_insert()

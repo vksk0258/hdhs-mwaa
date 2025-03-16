@@ -3,6 +3,7 @@ from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.operators.python import PythonOperator
 from operator.common import reverse_task_variables as var
 import numpy as np
+from common.notify_error_functions import notify_api_on_error
 import pandas as pd
 import pendulum
 import boto3
@@ -184,28 +185,36 @@ with DAG(
         task_id="task_RAR_REAL_SWRT_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
         op_args=[etl_conn_id, load_conn_id, RAR_REAL_SWRT_DTL_etl_table, RAR_REAL_SWRT_DTL_load_table, RAR_REAL_SWRT_DTL_COLUMNS, ['APLY_DT','BFMT_NO','BRND_CD','ITEM_D_CSF_CD','ITEM_L_CSF_CD','ITEM_M_CSF_CD','ITEM_S_CSF_CD','SELL_MDA_GBCD','SLITM_CD'],
-                 condition_query]
+                 condition_query],
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
         op_args=[etl_conn_id, load_conn_id, RAR_REAL_SWRT_ETC_DTL_etl_table, RAR_REAL_SWRT_ETC_DTL_load_table, RAR_REAL_SWRT_ETC_DTL_COLUMNS, ['APLY_DT','BFMT_NO','BRND_CD','BROD_MDA_GBCD','ITEM_D_CSF_CD','ITEM_L_CSF_CD','ITEM_M_CSF_CD','ITEM_S_CSF_CD','SELL_MDA_GBCD','SLITM_CD'],
-                 condition_query]
+                 condition_query],
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
         op_args=[etl_conn_id, load_conn_id, RAR_REAL_SWRT_ONLN_DTL_etl_table, RAR_REAL_SWRT_ONLN_DTL_load_table, RAR_REAL_SWRT_ONLN_DTL_COLUMNS, ['APLY_DT','BFMT_NO','BRND_CD','ITEM_D_CSF_CD','ITEM_L_CSF_CD','ITEM_M_CSF_CD','ITEM_S_CSF_CD','SELL_MDA_GBCD','SLITM_CD'],
-                 condition_query]
+                 condition_query],
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS",
         python_callable=snow_to_snow_merge,
         op_args=[etl_conn_id, load_conn_id, RAR_REAL_SWRT_ONLN_ETC_DTL_etl_table, RAR_REAL_SWRT_ONLN_ETC_DTL_load_table, RAR_REAL_SWRT_ONLN_ETC_DTL_COLUMNS, ['APLY_DT','BFMT_NO','BRND_CD','BROD_MDA_GBCD','ITEM_D_CSF_CD','ITEM_L_CSF_CD','ITEM_M_CSF_CD','ITEM_S_CSF_CD','SELL_MDA_GBCD','SLITM_CD'],
-                 condition_query]
+                 condition_query],
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
 

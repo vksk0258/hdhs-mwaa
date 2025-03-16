@@ -3,6 +3,7 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from common.common_call_procedure import execute_procedure, execute_procedure_dycl, log_etl_completion
 from datetime import datetime, timedelta
+from common.notify_error_functions import notify_api_on_error
 import boto3
 import json
 
@@ -28,21 +29,27 @@ with DAG(
         task_id="task_SP_RAR_AFCR_ORD_ARLT_SMR",
         python_callable=execute_procedure,
         op_args=["SP_RAR_AFCR_ORD_ARLT_SMR", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RAR_SCWD_DLU_ORD_ARLT_SMR = PythonOperator(
         task_id="task_SP_RAR_SCWD_DLU_ORD_ARLT_SMR",
         python_callable=execute_procedure,
         op_args=["SP_RAR_SCWD_DLU_ORD_ARLT_SMR", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RAR_DPTS_ITEM_REG_SMR = PythonOperator(
         task_id="task_SP_RAR_DPTS_ITEM_REG_SMR",
         python_callable=execute_procedure,
         op_args=["SP_RAR_DPTS_ITEM_REG_SMR", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RAR_AFCR_ORD_ARLT_SMR >> task_SP_RAR_SCWD_DLU_ORD_ARLT_SMR >> task_SP_RAR_DPTS_ITEM_REG_SMR

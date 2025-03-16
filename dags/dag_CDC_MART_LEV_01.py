@@ -3,6 +3,8 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from common.common_call_procedure import execute_procedure, execute_procedure_dycl, log_etl_completion
 from datetime import datetime, timedelta
+from common.notify_error_functions import notify_api_on_error
+
 import boto3
 import json
 
@@ -26,84 +28,108 @@ with DAG(
         task_id="task_SP_RDM_ALLI_REF_CH_DIM",
         python_callable=execute_procedure,
         op_args=["SP_RDM_ALLI_REF_CH_DIM", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BCU_CUST_REFI_CTEL_INF = PythonOperator(
         task_id="task_SP_BCU_CUST_REFI_CTEL_INF",
         python_callable=execute_procedure,
         op_args=["SP_BCU_CUST_REFI_CTEL_INF", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RDM_SELL_MDA_DIM = PythonOperator(
         task_id="task_SP_RDM_SELL_MDA_DIM",
         python_callable=execute_procedure,
         op_args=["SP_RDM_SELL_MDA_DIM", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BCU_SMS_RCV_AGR_CUST_INF = PythonOperator(
         task_id="task_SP_BCU_SMS_RCV_AGR_CUST_INF",
         python_callable=execute_procedure,
         op_args=["SP_BCU_SMS_RCV_AGR_CUST_INF", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BCU_PUSH_RCV_AGR_CUST_INF = PythonOperator(
         task_id="task_SP_BCU_PUSH_RCV_AGR_CUST_INF",
         python_callable=execute_procedure,
         op_args=["SP_BCU_PUSH_RCV_AGR_CUST_INF", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BCU_EMAIL_ADR_REFI_CUST_MST = PythonOperator(
         task_id="task_SP_BCU_EMAIL_ADR_REFI_CUST_MST",
         python_callable=execute_procedure,
         op_args=["SP_BCU_EMAIL_ADR_REFI_CUST_MST", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BCU_CUST_MST = PythonOperator(
         task_id="task_SP_BCU_CUST_MST",
         python_callable=execute_procedure,
         op_args=["SP_BCU_CUST_MST", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BOD_ORD_CTPF_VACO_DTL = PythonOperator(
         task_id="task_SP_BOD_ORD_CTPF_VACO_DTL",
         python_callable=execute_procedure,
         op_args=["SP_BOD_ORD_CTPF_VACO_DTL", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BOD_ORD_CTPF_VACO_DTL2 = PythonOperator(
         task_id="task_SP_BOD_ORD_CTPF_VACO_DTL2",
         python_callable=execute_procedure,
         op_args=["SP_BOD_ORD_CTPF_VACO_DTL2", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BOD_ORD_PTC = PythonOperator(
         task_id="task_SP_BOD_ORD_PTC",
         python_callable=execute_procedure,
         op_args=["SP_BOD_ORD_PTC", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BIM_ITEM_MST = PythonOperator(
         task_id="task_SP_BIM_ITEM_MST",
         python_callable=execute_procedure,
         op_args=["SP_BIM_ITEM_MST", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BOD_ORD_DC_DTL = PythonOperator(
         task_id="task_SP_BOD_ORD_DC_DTL",
         python_callable=execute_procedure,
         op_args=["SP_BOD_ORD_DC_DTL", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_ETL_DAILY_LOG = PythonOperator(

@@ -9,7 +9,7 @@ import pendulum
 
 parent_dir = "100_COM"
 
-snow_wh = Variable.get('1_batch_wh')
+snow_wh = Variable.get('2_batch_wh')
 
 def snow_chg_wh(wh_size):
     snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
@@ -22,7 +22,7 @@ def snow_chg_wh(wh_size):
 
 with DAG(
     dag_id="dag_DD01_0631_DAILY_BROAD_01",
-    schedule_interval='30 7 * * *',
+    schedule_interval='15 7 * * *',
     start_date=pendulum.datetime(2025, 2, 20, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
     catchup=False,
@@ -68,16 +68,16 @@ with DAG(
         trigger_rule="all_done"
     )
 
-    # 역방향
-    trigger_dag_CDC_ODS_DAILY_ARLT_TO_HDHS_01_v2 = TriggerDagRunOperator(
-        task_id='trigger_dag_CDC_ODS_DAILY_ARLT_TO_HDHS_01_v2',
-        trigger_dag_id='dag_CDC_ODS_DAILY_ARLT_TO_HDHS_01_v2',
-        reset_dag_run=True,  # 이미 수행된 dag여도 수행 할 것인지
-        wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
-        poke_interval=60,
-        allowed_states=['success'],  # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
-        trigger_rule="all_done"
-    )
+    # # 역방향
+    # trigger_dag_CDC_ODS_DAILY_ARLT_TO_HDHS_01_v2 = TriggerDagRunOperator(
+    #     task_id='trigger_dag_CDC_ODS_DAILY_ARLT_TO_HDHS_01_v2',
+    #     trigger_dag_id='dag_CDC_ODS_DAILY_ARLT_TO_HDHS_01_v2',
+    #     reset_dag_run=True,  # 이미 수행된 dag여도 수행 할 것인지
+    #     wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+    #     poke_interval=60,
+    #     allowed_states=['success'],  # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
+    #     trigger_rule="all_done"
+    # )
 
     trigger_dag_CDC_MART_DAILY_PGM_FCT_01 = TriggerDagRunOperator(
         task_id='trigger_dag_CDC_MART_DAILY_PGM_FCT_01',
@@ -111,7 +111,6 @@ with DAG(
     snow_chg_wh >> task_ETL_SCHEDULE_c_01 >> [trigger_dag_CDC_MART_DAILY_ARLT_01,trigger_dag_CDC_MART_DAILY_BROAD_01]
 
     trigger_dag_CDC_MART_DAILY_BROAD_01 >> trigger_dag_CDC_MART_DAILY_DRCT_DASH_BOARD_01
-    trigger_dag_CDC_MART_DAILY_ARLT_01 >>trigger_dag_CDC_ODS_DAILY_ARLT_TO_HDHS_01_v2
 
-    [trigger_dag_CDC_MART_DAILY_DRCT_DASH_BOARD_01, trigger_dag_CDC_ODS_DAILY_ARLT_TO_HDHS_01_v2] >> \
+    trigger_dag_CDC_MART_DAILY_DRCT_DASH_BOARD_01 >> \
     trigger_dag_CDC_MART_DAILY_PGM_FCT_01 >> trigger_dag_DD01_0710_ON_DEMAND_02

@@ -3,7 +3,9 @@ from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.providers.oracle.hooks.oracle import OracleHook
 from airflow.operators.python import PythonOperator
 from common import reverse_task_variables as var
+from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
 import json
+from common.notify_error_functions import notify_api_on_error
 import pendulum
 import numpy as np
 import pandas as pd
@@ -133,15 +135,23 @@ with DAG(
         start_date=pendulum.datetime(2025, 3, 1, tz="Asia/Seoul"),
         catchup=False,  # 과거 데이터 실행 스킵
         dagrun_timeout=datetime.timedelta(minutes=6000),  # DAG 실행 제한 시간
-        tags=["현대홈쇼핑","HES", "ODS"]  # DAG에 붙일 태그
+        tags=["현대홈쇼핑","HES", "ODS", "순환","Scheduled"]  # DAG에 붙일 태그
 ) as dag:
+    task_ETL_SCHEDULE_c_01 = etlScheduleUpdateOperator(
+        task_id="task_ETL_SCHEDULE_c_01",
+        trigger_rule="all_done"
+    )
+
     task_HES_CTPF_BSIC_VAL_DTL = PythonOperator(
         task_id="task_HES_CTPF_BSIC_VAL_DTL",
         python_callable=ora_to_snow_merge,
         op_args=["conn_oracle_main", "conn_snow_load", var_dict['HES_CTPF_BSIC_VAL_DTL']['ETL_TABLE'],
                  var_dict['HES_CTPF_BSIC_VAL_DTL']['LOAD_TABLE'],
                  var_dict['HES_CTPF_BSIC_VAL_DTL']['COLUMNS'], var_dict['HES_CTPF_BSIC_VAL_DTL']['PK_COLUMNS'],
-                 CONDITION_QEURY]
+                 CONDITION_QEURY],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_HES_CTPF_BSIC_HMALL_DTL = PythonOperator(
@@ -150,7 +160,10 @@ with DAG(
         op_args=["conn_oracle_main", "conn_snow_load", var_dict['HES_CTPF_BSIC_HMALL_DTL']['ETL_TABLE'],
                  var_dict['HES_CTPF_BSIC_HMALL_DTL']['LOAD_TABLE'],
                  var_dict['HES_CTPF_BSIC_HMALL_DTL']['COLUMNS'], var_dict['HES_CTPF_BSIC_HMALL_DTL']['PK_COLUMNS'],
-                 CONDITION_QEURY]
+                 CONDITION_QEURY],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_HES_INSU_ARLT_DTL = PythonOperator(
@@ -159,7 +172,10 @@ with DAG(
         op_args=["conn_oracle_main", "conn_snow_load", var_dict['HES_INSU_ARLT_DTL']['ETL_TABLE'],
                  var_dict['HES_INSU_ARLT_DTL']['LOAD_TABLE'],
                  var_dict['HES_INSU_ARLT_DTL']['COLUMNS'], var_dict['HES_INSU_ARLT_DTL']['PK_COLUMNS'],
-                 CONDITION_QEURY2]
+                 CONDITION_QEURY2],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_HES_GA_INSU_ARLT_DTL = PythonOperator(
@@ -168,7 +184,10 @@ with DAG(
         op_args=["conn_oracle_main", "conn_snow_load", var_dict['HES_GA_INSU_ARLT_DTL']['ETL_TABLE'],
                  var_dict['HES_GA_INSU_ARLT_DTL']['LOAD_TABLE'],
                  var_dict['HES_GA_INSU_ARLT_DTL']['COLUMNS'], var_dict['HES_GA_INSU_ARLT_DTL']['PK_COLUMNS'],
-                 ""]
+                 ""],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_HES_BRND_CTPF_RATE_DTL = PythonOperator(
@@ -176,7 +195,10 @@ with DAG(
         python_callable=ora_to_snow_merge,
         op_args=["conn_oracle_main", "conn_snowflake_etl", var_dict['HES_BRND_CTPF_RATE_DTL']['ETL_TABLE'], var_dict['HES_BRND_CTPF_RATE_DTL']['LOAD_TABLE'],
                  var_dict['HES_BRND_CTPF_RATE_DTL']['COLUMNS'], var_dict['HES_BRND_CTPF_RATE_DTL']['PK_COLUMNS'],
-                 CONDITION_QEURY]
+                 CONDITION_QEURY],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_HES_BRND_CTPF_RATE_ETC_DTL = PythonOperator(
@@ -185,7 +207,10 @@ with DAG(
         op_args=["conn_oracle_main", "conn_snowflake_etl", var_dict['HES_BRND_CTPF_RATE_ETC_DTL']['ETL_TABLE'],
                  var_dict['HES_BRND_CTPF_RATE_ETC_DTL']['LOAD_TABLE'],
                  var_dict['HES_BRND_CTPF_RATE_ETC_DTL']['COLUMNS'], var_dict['HES_BRND_CTPF_RATE_ETC_DTL']['PK_COLUMNS'],
-                 CONDITION_QEURY]
+                 CONDITION_QEURY],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_HES_DRCT_PRCH_LOSS_DTL = PythonOperator(
@@ -194,7 +219,10 @@ with DAG(
         op_args=["conn_oracle_main", "conn_snowflake_etl", var_dict['HES_DRCT_PRCH_LOSS_DTL']['ETL_TABLE'],
                  var_dict['HES_DRCT_PRCH_LOSS_DTL']['LOAD_TABLE'],
                  var_dict['HES_DRCT_PRCH_LOSS_DTL']['COLUMNS'], var_dict['HES_DRCT_PRCH_LOSS_DTL']['PK_COLUMNS'],
-                 CONDITION_QEURY2]
+                 CONDITION_QEURY2],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_RAR_CTPF_RATE_DTL = PythonOperator(
@@ -203,7 +231,10 @@ with DAG(
         op_args=["conn_oracle_main", "conn_snowflake_etl", var_dict['RAR_CTPF_RATE_DTL']['ETL_TABLE'],
                  var_dict['RAR_CTPF_RATE_DTL']['LOAD_TABLE'],
                  var_dict['RAR_CTPF_RATE_DTL']['COLUMNS'], var_dict['RAR_CTPF_RATE_DTL']['PK_COLUMNS'],
-                 CONDITION_QEURY]
+                 CONDITION_QEURY],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_RAR_CTPF_RATE_ETC_DTL = PythonOperator(
@@ -212,7 +243,10 @@ with DAG(
         op_args=["conn_oracle_main", "conn_snowflake_etl", var_dict['RAR_CTPF_RATE_ETC_DTL']['ETL_TABLE'],
                  var_dict['RAR_CTPF_RATE_ETC_DTL']['LOAD_TABLE'],
                  var_dict['RAR_CTPF_RATE_ETC_DTL']['COLUMNS'], var_dict['RAR_CTPF_RATE_ETC_DTL']['PK_COLUMNS'],
-                 CONDITION_QEURY2]
+                 CONDITION_QEURY2],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_RAR_CTPF_RATE_HMALL_DTL = PythonOperator(
@@ -221,11 +255,14 @@ with DAG(
         op_args=["conn_oracle_main", "conn_snowflake_etl", var_dict['RAR_CTPF_RATE_HMALL_DTL']['ETL_TABLE'],
                  var_dict['RAR_CTPF_RATE_HMALL_DTL']['LOAD_TABLE'],
                  var_dict['RAR_CTPF_RATE_HMALL_DTL']['COLUMNS'], var_dict['RAR_CTPF_RATE_HMALL_DTL']['PK_COLUMNS'],
-                 CONDITION_QEURY]
+                 CONDITION_QEURY],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
 
-    [task_HES_CTPF_BSIC_VAL_DTL, task_RAR_CTPF_RATE_DTL]
+    task_ETL_SCHEDULE_c_01 >> [task_HES_CTPF_BSIC_VAL_DTL, task_RAR_CTPF_RATE_DTL]
 
     task_HES_CTPF_BSIC_VAL_DTL >> task_HES_CTPF_BSIC_HMALL_DTL >>\
     task_HES_INSU_ARLT_DTL >> task_HES_GA_INSU_ARLT_DTL >> \

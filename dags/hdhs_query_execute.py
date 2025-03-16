@@ -1,13 +1,11 @@
 from airflow import DAG
 from airflow.providers.oracle.hooks.oracle import OracleHook
 from airflow.operators.python import PythonOperator
+# from common.notify_error_functions import notify_api_on_error
 from airflow.models import Variable
 import pandas as pd
-import os
 import requests
-import json
-
-
+import os
 
 def make_api_body(dag_id, task_id, start_date, end_date, error_logs):
     api_body = {
@@ -17,13 +15,14 @@ def make_api_body(dag_id, task_id, start_date, end_date, error_logs):
         "sendPrrgDtm": "",
         "msgTitl": f"{task_id} failed",
         "txtCntn": f"""MWAA 알림 API 테스트입니다
-        DAG ID: {dag_id}
-        Task ID: {task_id}
-        Start Time: {start_date}
-        End Time: {end_date}
-        Error: {error_logs}""",
+        [DAG ID]: {dag_id}
+        [Task ID]: {task_id}
+        [Start Time]: {start_date}
+        [End Time]: {end_date}
+        [Error Log URL]: {error_logs}""",
         "untdNotfSendWayGbcdList": ["04"],
-        "controlYN": "N"
+        "controlYN": "Y",
+        "controlGbcd": "dw"
     }
     print("API BODY:", api_body)
     return api_body
@@ -37,11 +36,11 @@ def notify_api_on_error(context):
     start_date = task_instance.start_date.strftime('%Y-%m-%d %H:%M:%S')
     end_date = task_instance.end_date .strftime('%Y-%m-%d %H:%M:%S')
 
-    error_logs = task_instance.error
+    error_log_url = context.get('task_instance').log_url
 
 
     # API 호출을 위한 데이터 생성
-    api_body = make_api_body(dag_id, task_id, start_date, end_date, error_logs)
+    api_body = make_api_body(dag_id, task_id, start_date, end_date, error_log_url)
 
     url = "https://boapi.hmall.com/api/dw/cor/v1/untd-notf/insert-send"  # 예제 API
 
@@ -59,6 +58,7 @@ def notify_api_on_error(context):
         print("❌ POST 실패:", response.status_code)
 
 
+
 # 환경 변수 설정
 client_path = Variable.get("client_path")
 sql_query = Variable.get("query")
@@ -68,7 +68,7 @@ TMP_DIR = "/tmp/ods"
 S3_BUCKET_NAME = "hdhs-dw-mwaa-migdata"
 
 
-def oracle_conn_main_test(**kwargs):
+def oracle_conn_main_test(context):
     """
     Oracle DB에서 쿼리를 수행하고 결과를 XCom에 저장
     """
@@ -83,10 +83,12 @@ def oracle_conn_main_test(**kwargs):
 
     # Oracle DB 연결 및 쿼리 실행
     with oracle_hook.get_conn() as connection:
-        df = pd.read_sql(sql_query, connection)
-        df.to_csv("/tmp/tmp.csv", index=True, header=True)
-        print(df)
-        os.system(f"aws s3 cp /tmp/tmp.csv s3://hdhs-dw-mwaa-s3/tmp/tmp.csv")
+        with connection.cursor() as cursor:
+            cursor.execute(sql_query)
+            result = cursor.fetchall()
+            df = pd.read_sql(sql_query, connection)
+            for row in result:
+                print(row)
 
 
 # DAG 정의
@@ -100,8 +102,8 @@ with DAG(
     oracle_conn_test_task = PythonOperator(
         task_id='oracle_conn_test_task',
         python_callable=oracle_conn_main_test,
-        provide_context=True,  # XCom 사용을 위해 추가
-        on_failure_callback=notify_api_on_error,
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     oracle_conn_test_task

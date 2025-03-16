@@ -9,7 +9,7 @@ import pendulum
 
 parent_dir = "100_COM"
 
-snow_wh = Variable.get('1_batch_wh')
+snow_wh = Variable.get('3_batch_wh')
 
 def snow_chg_wh(wh_size):
     snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')

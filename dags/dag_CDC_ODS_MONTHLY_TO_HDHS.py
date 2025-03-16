@@ -3,6 +3,7 @@ from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from common.common_call_procedure import execute_procedure, execute_procedure_dycl, log_etl_completion
 from airflow.providers.oracle.hooks.oracle import OracleHook
 from airflow.operators.python import PythonOperator
+from common.notify_error_functions import notify_api_on_error
 from airflow.decorators import task
 from datetime import datetime, timedelta
 import boto3
@@ -26,117 +27,79 @@ key = "param/wf_DD01_0030_MONTHLY_01.json"
 response = s3.get_object(Bucket=bucket_name, Key=key)
 params = json.load(response['Body'])
 
-p_start = "20250228"
-p_end = "20250228"
+p_start = params.get("$$P_START")
+p_end = params.get("$$P_END")
 
-# p_start = params.get("$$P_START")
-# p_end = params.get("$$P_END")
-
-def snow_to_snow_merge(snow_conn_id, ora_conn_id, snow_table, ora_table, columns, pk_columns, condition_query):
-    import os
+def snow_to_snow_merge(snow_conn_id, ora_main_conn_id, snow_table, ora_main_table, columns, pk_columns, condition_query):
     """
     특정 테이블 데이터를 처리하고 Snowflake에 MERGE 합니다.
     """
 
-    snow_schema, snow_table_name = snow_table.split('.')
-    ora_schema, ora_table_name = ora_table.split('.')
-
     snow_hook = SnowflakeHook(snowflake_conn_id=snow_conn_id)
-    oracle_hook = SnowflakeHook(snowflake_conn_id=ora_conn_id)
-    ora_connection = oracle_hook.get_conn()
+    ora_main_hook = OracleHook(oracle_conn_id=ora_main_conn_id, thick_mode=True, thick_mode_lib_dir=client_path)
+    ora_main_connection = ora_main_hook.get_conn()
 
-    chunk_index = 1
+    ora_schema, ora_table_name = ora_main_table.split('.')
 
     with snow_hook.get_conn() as snow_connection:
+        with ora_main_connection.cursor() as ora_main_cursor:
 
-        query = f"""
-                    SELECT {', '.join(columns)}
-                    FROM {snow_table}
-                 """
-        query += f"""{condition_query}
-                """
+            truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
+            print("==================[TRUNCATE QEURY]==================")
+            print(truncate_query)
+            ora_main_cursor.execute(truncate_query)
 
-        print("==================[SNOWFLAKE QEURY]==================")
-        print(query)
-        df = pd.read_sql(query, snow_connection)
-        print(f"## {snow_table} 조회 카운트 : {len(df)}")
-
-        for col in df.select_dtypes(include=['datetime', 'datetimetz']).columns:
-            df[col] = df[col].apply(
-                lambda x: None if pd.isnull(x) or x == pd.NaT or str(x).strip() in ['NaT', '']
-                else x.isoformat() if isinstance(x, pd.Timestamp) else str(x)
-            )
-
-        # NaN 값을 명확하게 None으로 변환
-        df.replace({np.nan: None}, inplace=True)
-
-        with ora_connection.cursor() as ora_cursor:
-
-
-            # MERGE 쿼리 생성 (배치 처리)
-            values = df.where(pd.notnull(df), None).values.tolist()
-
-            batch_size = 10000  # 한 번에 실행할 최대 행 수
-
-            for i in range(0, len(values), batch_size):
-
-                temp_table = f"{ora_table_name}{chunk_index}"
-
-                create_temp_table_query = f"""
-                                        CREATE TEMPORARY TABLE {ora_schema}.{temp_table} AS
-                                        SELECT * FROM {ora_table} WHERE 1=0;
-                                        """  # 빈 임시 테이블 생성
-                print("==================[create_temp_table_query]==================")
-                print(create_temp_table_query)
-
-                ora_cursor.execute(create_temp_table_query)
-
-                insert_query = f"""
-                                INSERT INTO {ora_schema}.{temp_table} ({", ".join(columns)})
-                                VALUES ({", ".join(["%s"] * len(columns))});
-                                """
-                print("==================[insert_query]==================")
-                print(insert_query)
-
-
-
-                batch = values[i: i + batch_size]
-
-                ora_cursor.executemany(insert_query, batch)
-
-                # 3️⃣ MERGE 실행
-                merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in pk_columns])
-
-                update_set = ", ".join(
-                    [f"target.{col} = source.{col}" for col in columns if col not in pk_columns])
-                insert_columns = ", ".join(columns)
-                insert_values = ", ".join([f"source.{col}" for col in columns])
-
-                merge_query = f"""
-                    MERGE INTO {ora_table} AS target
-                    USING {ora_schema}.{temp_table} AS source
-                    ON {merge_condition}
-                    WHEN MATCHED THEN
-                        UPDATE SET {update_set}
-                    WHEN NOT MATCHED THEN
-                        INSERT ({insert_columns})
-                        VALUES ({insert_values});
+            query = f"""
+                        SELECT {', '.join(columns)}
+                        FROM {snow_table}
+                     """
+            query += f"""{condition_query}
                     """
 
-                print("==================[merge_query]==================")
-                print(merge_query)
+            print("==================[ORACLE QEURY]==================")
+            print(query)
+            df = pd.read_sql(query, snow_connection)
+            print(f"## {snow_table} 조회 카운트 : {len(df)}")
+            print(df.head(1))
 
-                ora_cursor.execute(merge_query)
+            # 숫자형 컬럼 변환 (NaN을 None으로 변환)
+            for col in df.select_dtypes(include=['number']).columns:
+                df[col] = df[col].astype(float).where(df[col].notnull(), None)
 
-                print(f"{temp_table} 머지 완료!!!!")
+            # 날짜 컬럼 유지 및 변환하지 않음
+            date_columns = df.select_dtypes(include=['datetime', 'datetimetz']).columns
 
-                chunk_index += 1
+            # Insert Query 수정
+            insert_query = f"""
+                INSERT INTO {ora_main_table} ({", ".join(columns)})
+                VALUES ({", ".join([f"TO_TIMESTAMP(:{i + 1}, 'YYYY-MM-DD HH24:MI:SS')" if col in date_columns else f":{i + 1}" for i, col in enumerate(columns)])})
+            """
 
-    ora_connection.close()
+            # executemany 실행 전에 데이터 타입 변환 (날짜 컬럼만 문자열로 변환)
+            df = df.apply(lambda row: [
+                row[col].strftime('%Y-%m-%d %H:%M:%S') if col in date_columns and pd.notnull(row[col]) else row[col] for
+                col in columns], axis=1).tolist()
+
+            print("==================[INSERT QEURY]==================")
+            print(insert_query)
+
+            # BATCH INSERT 수행
+            batch_size = 10000
+            for i in range(0, len(df), batch_size):
+                batch = df[i: i + batch_size]
+                ora_main_cursor.executemany(insert_query, batch)
+                ora_main_connection.commit()
+                print(f"총{len(df)}건 중 {i + 10000}건 커밋 완료")
+
+            ora_main_cursor.execute(f"SELECT COUNT(*) FROM {ora_main_table}")
+            print("######TMP에 들어간 건수######")
+            print(ora_main_cursor.fetchone())
+
+    ora_main_connection.close()
     print("커넥션 종료")
 
 snow_conn_id = 'conn_snowflake_etl'
-ora_conn_id = 'conn_snow_load'
+ora_main_conn_id = 'conn_oracle_main'
 
 CONDITION_QUERY = f"""WHERE CHG_DTM >= TO_DATE('{p_start}' || '000000', 'YYYYMMDDHH24MISS') + 1
 AND CHG_DTM <= TO_DATE('{p_end}' || '235959', 'YYYYMMDDHH24MISS') + 1
@@ -157,7 +120,8 @@ with DAG(
         if p_end[6:8] == '01': # 7번째(인덱스 6)부터 2글자
             return ['task_SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL_M',
                     'task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV',
-                    'task_CU_TCS_CUST_HIS_TO_HDHS',
+                    'task_TMP_GOLD_CUST_NO_TO_HDHS',
+                    'task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql',
                     'task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01'
                     ]
         elif (datetime.strptime(p_end, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")[6:8] == '01':
@@ -167,129 +131,258 @@ with DAG(
         task_id="task_SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL_M",
         python_callable=execute_procedure,
         op_args=["SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL_M", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="none_skipped"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+
     )
+    @task(task_id='task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql',
+          trigger_rule="all_done",
+          provide_context=True,
+          on_failure_callback=notify_api_on_error
+          )
+    def task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql(p_start,p_end,ora_main_conn_id):
+        pre_sql = f"""
+        DELETE FROM HDHS_DW.CU_TCS_CUST_HIS_MERGE
+        WHERE BSIC_YR || BSIC_MM 
+        BETWEEN TO_CHAR(TO_DATE('{p_start}', 'YYYYMMDD'), 'YYYYMM') 
+        AND TO_CHAR(TO_DATE('{p_end}', 'YYYYMMDD'), 'YYYYMM')"""
+        print(pre_sql)
+        ora_main_hook = OracleHook(oracle_conn_id=ora_main_conn_id, thick_mode=True, thick_mode_lib_dir=client_path)
+        with ora_main_hook.get_conn() as ora_main_connection:
+            with ora_main_connection.cursor() as ora_main_cursor:
+                ora_main_cursor.execute(pre_sql)
+                print("#####SQL 수행#####")
+                print(ora_main_cursor.fetchone)
+
 
     task_CU_TCS_CUST_HIS_TO_HDHS = PythonOperator(
         task_id="task_CU_TCS_CUST_HIS_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[snow_conn_id, ora_conn_id, var_dict['CU_TCS_CUST_HIS']['SNOW_TABLE'],
-                 var_dict['CU_TCS_CUST_HIS']['MAIN_TABLE'],
-                 var_dict['CU_TCS_CUST_HIS']['COLUMNS'], var_dict['CU_TCS_CUST_HIS']['PK_COLUMNS'],
-                 ""]
+        op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_CU_TCS_CUST_HIS_TO_HDHS']['SNOW_TABLE'],
+                 var_dict['task_CU_TCS_CUST_HIS_TO_HDHS']['ORA_MAIN_TABLE'],
+                 var_dict['task_CU_TCS_CUST_HIS_TO_HDHS']['COLUMNS'], var_dict['task_CU_TCS_CUST_HIS_TO_HDHS']['PK_COLUMNS'],
+                 ""],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+
     )
 
     task_IM_VEN_CNTB_RATE_SMR_TO_HDHS = PythonOperator(
         task_id="task_IM_VEN_CNTB_RATE_SMR_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[snow_conn_id, ora_conn_id, var_dict['IM_VEN_CNTB_RATE_SMR']['SNOW_TABLE'],
-                 var_dict['IM_VEN_CNTB_RATE_SMR']['MAIN_TABLE'],
-                 var_dict['IM_VEN_CNTB_RATE_SMR']['COLUMNS'], var_dict['IM_VEN_CNTB_RATE_SMR']['PK_COLUMNS'],
-                 CONDITION_QUERY]
+        op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_IM_VEN_CNTB_RATE_SMR_TO_HDHS']['SNOW_TABLE'],
+                 var_dict['task_IM_VEN_CNTB_RATE_SMR_TO_HDHS']['ORA_MAIN_TABLE'],
+                 var_dict['task_IM_VEN_CNTB_RATE_SMR_TO_HDHS']['COLUMNS'], var_dict['task_IM_VEN_CNTB_RATE_SMR_TO_HDHS']['PK_COLUMNS'],
+                 CONDITION_QUERY],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+
     )
 
     task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS = PythonOperator(
         task_id="task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[snow_conn_id, ora_conn_id, var_dict['MK_AVG_WINT_INSM_CMIS_RATE']['SNOW_TABLE'],
-                 var_dict['MK_AVG_WINT_INSM_CMIS_RATE']['MAIN_TABLE'],
-                 var_dict['MK_AVG_WINT_INSM_CMIS_RATE']['COLUMNS'], var_dict['MK_AVG_WINT_INSM_CMIS_RATE']['PK_COLUMNS'],
-                 CONDITION_QUERY2]
+        op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS']['SNOW_TABLE'],
+                 var_dict['task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS']['ORA_MAIN_TABLE'],
+                 var_dict['task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS']['COLUMNS'], var_dict['task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS']['PK_COLUMNS'],
+                 CONDITION_QUERY2],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+
     )
 
     task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS = PythonOperator(
         task_id="task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS",
         python_callable=snow_to_snow_merge,
-        op_args=[snow_conn_id, ora_conn_id, var_dict['MK_AVG_WINT_INSM_CMIS_ETC_RATE']['SNOW_TABLE'],
-                 var_dict['MK_AVG_WINT_INSM_CMIS_ETC_RATE']['MAIN_TABLE'],
-                 var_dict['MK_AVG_WINT_INSM_CMIS_ETC_RATE']['COLUMNS'], var_dict['MK_AVG_WINT_INSM_CMIS_ETC_RATE']['PK_COLUMNS'],
-                 CONDITION_QUERY2]
+        op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS']['SNOW_TABLE'],
+                 var_dict['task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS']['ORA_MAIN_TABLE'],
+                 var_dict['task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS']['COLUMNS'], var_dict['task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS']['PK_COLUMNS'],
+                 CONDITION_QUERY2],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+
     )
 
-    # task__TO_HDHS = PythonOperator(
-    #     task_id="task__TO_HDHS",
-    #     python_callable=snow_to_snow_merge,
-    #     op_args=[snow_conn_id, ora_conn_id, var_dict['']['SNOW_TABLE'],
-    #              var_dict['']['MAIN_TABLE'],
-    #              var_dict['']['COLUMNS'], var_dict['']['PK_COLUMNS'],
-    #              CONDITION_QUERY]
-    # )
+    task_HES_BRND_CTPF_RATE_DTL_TO_HDHS = PythonOperator(
+        task_id="task_HES_BRND_CTPF_RATE_DTL_TO_HDHS",
+        python_callable=snow_to_snow_merge,
+        op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_HES_BRND_CTPF_RATE_DTL_TO_HDHS']['SNOW_TABLE'],
+                 var_dict['task_HES_BRND_CTPF_RATE_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
+                 var_dict['task_HES_BRND_CTPF_RATE_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_BRND_CTPF_RATE_DTL_TO_HDHS']['PK_COLUMNS'],
+                 CONDITION_QUERY],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+    )
 
-    # task__TO_HDHS = PythonOperator(
-    #     task_id="task__TO_HDHS",
-    #     python_callable=snow_to_snow_merge,
-    #     op_args=[snow_conn_id, ora_conn_id, var_dict['']['SNOW_TABLE'],
-    #              var_dict['']['MAIN_TABLE'],
-    #              var_dict['']['COLUMNS'], var_dict['']['PK_COLUMNS'],
-    #              ""]
-    # )
-    #
-    # task__TO_HDHS = PythonOperator(
-    #     task_id="task__TO_HDHS",
-    #     python_callable=snow_to_snow_merge,
-    #     op_args=[snow_conn_id, ora_conn_id, var_dict['']['SNOW_TABLE'],
-    #              var_dict['']['MAIN_TABLE'],
-    #              var_dict['']['COLUMNS'], var_dict['']['PK_COLUMNS'],
-    #              ""]
-    # )
-    #
-    # task__TO_HDHS = PythonOperator(
-    #     task_id="task__TO_HDHS",
-    #     python_callable=snow_to_snow_merge,
-    #     op_args=[snow_conn_id, ora_conn_id, var_dict['']['SNOW_TABLE'],
-    #              var_dict['']['MAIN_TABLE'],
-    #              var_dict['']['COLUMNS'], var_dict['']['PK_COLUMNS'],
-    #              ""]
-    # )
-    #
-    # task__TO_HDHS = PythonOperator(
-    #     task_id="task__TO_HDHS",
-    #     python_callable=snow_to_snow_merge,
-    #     op_args=[snow_conn_id, ora_conn_id, var_dict['']['SNOW_TABLE'],
-    #              var_dict['']['MAIN_TABLE'],
-    #              var_dict['']['COLUMNS'], var_dict['']['PK_COLUMNS'],
-    #              ""]
-    # )
-    #
-    # task__TO_HDHS = PythonOperator(
-    #     task_id="task__TO_HDHS",
-    #     python_callable=snow_to_snow_merge,
-    #     op_args=[snow_conn_id, ora_conn_id, var_dict['']['SNOW_TABLE'],
-    #              var_dict['']['MAIN_TABLE'],
-    #              var_dict['']['COLUMNS'], var_dict['']['PK_COLUMNS'],
-    #              ""]
-    # )
-    #
-    # task__TO_HDHS = PythonOperator(
-    #     task_id="task__TO_HDHS",
-    #     python_callable=snow_to_snow_merge,
-    #     op_args=[snow_conn_id, ora_conn_id, var_dict['']['SNOW_TABLE'],
-    #              var_dict['']['MAIN_TABLE'],
-    #              var_dict['']['COLUMNS'], var_dict['']['PK_COLUMNS'],
-    #              ""]
-    # )
+    task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS = PythonOperator(
+        task_id="task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS",
+        python_callable=snow_to_snow_merge,
+        op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS']['SNOW_TABLE'],
+                 var_dict['task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
+                 var_dict['task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS']['PK_COLUMNS'],
+                 CONDITION_QUERY],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+    )
 
-    @task(task_id='task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV')
+    task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS = PythonOperator(
+        task_id="task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS",
+        python_callable=snow_to_snow_merge,
+        op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS']['SNOW_TABLE'],
+                 var_dict['task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
+                 var_dict['task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS']['PK_COLUMNS'],
+                 CONDITION_QUERY],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+    )
+
+    task_RAR_CTPF_RATE_DTL_TO_HDHS = PythonOperator(
+        task_id="task_RAR_CTPF_RATE_DTL_TO_HDHS",
+        python_callable=snow_to_snow_merge,
+        op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_RAR_CTPF_RATE_DTL_TO_HDHS']['SNOW_TABLE'],
+                 var_dict['task_RAR_CTPF_RATE_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
+                 var_dict['task_RAR_CTPF_RATE_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_CTPF_RATE_DTL_TO_HDHS']['PK_COLUMNS'],
+                 CONDITION_QUERY2],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+    )
+
+    task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS = PythonOperator(
+        task_id="task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS",
+        python_callable=snow_to_snow_merge,
+        op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS']['SNOW_TABLE'],
+                 var_dict['task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
+                 var_dict['task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS']['PK_COLUMNS'],
+                 CONDITION_QUERY2],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+    )
+
+    task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS = PythonOperator(
+        task_id="task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS",
+        python_callable=snow_to_snow_merge,
+        op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS']['SNOW_TABLE'],
+                 var_dict['task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
+                 var_dict['task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS']['PK_COLUMNS'],
+                 CONDITION_QUERY2],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+    )
+
+    @task(task_id='task_TMP_GOLD_CUST_NO_DW_TO_HDHS',
+          trigger_rule="all_done",
+          provide_context=True)
+    def task_TMP_GOLD_CUST_NO_DW_TO_HDHS():
+        snow_hook = SnowflakeHook(snowflake_conn_id=snow_conn_id)
+        ora_main_hook = OracleHook(oracle_conn_id=ora_main_conn_id, thick_mode=True, thick_mode_lib_dir=client_path)
+        ora_main_connection = ora_main_hook.get_conn()
+
+        snow_table = var_dict['task_TMP_GOLD_CUST_NO_DW_TO_HDHS']['SNOW_TABLE']
+        ora_main_table = var_dict['task_TMP_GOLD_CUST_NO_DW_TO_HDHS']['ORA_MAIN_TABLE']
+        columns = var_dict['task_TMP_GOLD_CUST_NO_DW_TO_HDHS']['COLUMNS']
+        pk_columns = var_dict['task_TMP_GOLD_CUST_NO_DW_TO_HDHS']['PK_COLUMNS']
+
+
+        with snow_hook.get_conn() as snow_connection:
+
+            query = f"""
+                            SELECT *
+                            FROM {snow_table}
+                         """
+
+            print("==================[ORACLE QEURY]==================")
+            print(query)
+            df = pd.read_sql(query, snow_connection)
+            print(f"## {snow_table} 조회 카운트 : {len(df)}")
+            print(df.head(1))
+
+            df_tf = pd.DataFrame(index=df.index)
+
+            df_tf['STAD_MM'] = df['BSIC_YM']
+            df_tf['CUST_NO'] = df['CUST_NO']
+            df_tf['PROC_DTM'] = df['WRK_DTM']
+
+        with ora_main_connection.cursor() as ora_main_cursor:
+            ora_schema, ora_table_name = ora_main_table.split('.')
+
+            truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
+            print("==================[TRUNCATE QEURY]==================")
+            print(truncate_query)
+            ora_main_cursor.execute(truncate_query)
+
+            # 숫자형 컬럼 변환 (NaN을 None으로 변환)
+            for col in df_tf.select_dtypes(include=['number']).columns:
+                df_tf[col] = df_tf[col].astype(float).where(df_tf[col].notnull(), None)
+
+            # 날짜 컬럼 유지 및 변환하지 않음
+            date_columns = df_tf.select_dtypes(include=['datetime', 'datetimetz']).columns
+
+            # Insert Query 수정
+            insert_query = f"""
+                                INSERT INTO {ora_main_table} ({", ".join(columns)})
+                                VALUES ({", ".join([f"TO_TIMESTAMP(:{i + 1}, 'YYYY-MM-DD HH24:MI:SS')" if col in date_columns else f":{i + 1}" for i, col in enumerate(columns)])})
+                            """
+
+            # executemany 실행 전에 데이터 타입 변환 (날짜 컬럼만 문자열로 변환)
+            df_tf = df_tf.apply(lambda row: [
+                row[col].strftime('%Y-%m-%d %H:%M:%S') if col in date_columns and pd.notnull(row[col]) else row[col] for
+                col in columns], axis=1).tolist()
+
+            print("==================[INSERT QEURY]==================")
+            print(insert_query)
+
+            # BATCH INSERT 수행
+            batch_size = 10000
+            for i in range(0, len(df_tf), batch_size):
+                batch = df_tf[i: i + batch_size]
+                ora_main_cursor.executemany(insert_query, batch)
+                ora_main_connection.commit()
+                print(f"총{len(df)}건 중 {i + 10000}건 커밋 완료")
+
+            ora_main_cursor.execute(f"SELECT COUNT(*) FROM {ora_main_table}")
+            print("######TMP에 들어간 건수######")
+            print(ora_main_cursor.fetchone())
+
+        ora_main_connection.close()
+        print("커넥션 종료")
+
+
+    @task(task_id='task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV',
+          trigger_rule="all_done",
+          provide_context=True)
     def task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV(p_start):
         snow_hook = SnowflakeHook(snowflake_conn_id=snow_conn_id)
-        oracle_hook = SnowflakeHook(snowflake_conn_id=ora_conn_id)
-        oracle_conn = oracle_hook.get_conn()
+        ora_main_hook = OracleHook(oracle_conn_id=ora_main_conn_id, thick_mode=True, thick_mode_lib_dir=client_path)
+        ora_main_connection = ora_main_hook.get_conn()
 
-        ora_schema = 'MWAA'
-        ora_table = 'CU_ITNT_CUST_GRD_INF_TMP'
+        snow_table = var_dict['task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV']['SNOW_TABLE']
+        ora_main_table = var_dict['task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV']['ORA_MAIN_TABLE']
+        columns = var_dict['task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV']['COLUMNS']
+        pk_columns = var_dict['task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV']['PK_COLUMNS']
 
-        query = "SELECT * FROM DW_RM.RCU_HMALL_CUST_GRD_DTL LIMIT 100"
 
-        columns = [
-            "BSIC_YM", "CUST_NO", "ITNT_GRD_GBCD", "BLOG_CNT", "ORD_CNT", "ORD_AMT",
-            "RCNT_11_MTHS_EVAL_CNT", "RCNT_11_MTHS_ORD_CNT", "RCNT_11_MTHS_ORD_AMT",
-            "GRD_RETN_MTHS", "RGST_ID", "RGST_IP", "REG_DTM", "CHGP_ID", "CHGP_IP", "CHG_DTM"
-        ]
+        with snow_hook.get_conn() as snow_connection:
+            query = f"""
+                            SELECT *
+                            FROM {snow_table}
+                         """
 
-        pk_columns = ["BSIC_YM", "CUST_NO"]
-
-        with snow_hook.get_conn() as snow_conn:
-            df = pd.read_sql(query, snow_conn)
+            print("==================[ORACLE QEURY]==================")
+            print(query)
+            df = pd.read_sql(query, snow_connection)
+            print(f"## {snow_table} 조회 카운트 : {len(df)}")
+            print(df.head(1))
 
             for col in df.select_dtypes(include=['datetime', 'datetimetz']).columns:
                 df[col] = df[col].apply(
@@ -338,100 +431,83 @@ with DAG(
             print(df_tf.head)
             print(len(df_tf))
 
-            chunk_index = 1
+        with ora_main_connection.cursor() as ora_main_cursor:
+            ora_schema, ora_table_name = ora_main_table.split('.')
 
-            with oracle_conn.cursor() as ora_cursor:
+            truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
+            print("==================[TRUNCATE QEURY]==================")
+            print(truncate_query)
+            ora_main_cursor.execute(truncate_query)
 
-                # MERGE 쿼리 생성 (배치 처리)
-                values = df_tf.where(pd.notnull(df_tf), None).values.tolist()
+            # 숫자형 컬럼 변환 (NaN을 None으로 변환)
+            for col in df_tf.select_dtypes(include=['number']).columns:
+                df_tf[col] = df_tf[col].astype(float).where(df_tf[col].notnull(), None)
 
-                batch_size = 10000  # 한 번에 실행할 최대 행 수
+            # 날짜 컬럼 유지 및 변환하지 않음
+            date_columns = df_tf.select_dtypes(include=['datetime', 'datetimetz']).columns
 
-                for i in range(0, len(values), batch_size):
+            # Insert Query 수정
+            insert_query = f"""
+                                INSERT INTO {ora_main_table} ({", ".join(columns)})
+                                VALUES ({", ".join([f"TO_TIMESTAMP(:{i + 1}, 'YYYY-MM-DD HH24:MI:SS')" if col in date_columns else f":{i + 1}" for i, col in enumerate(columns)])})
+                            """
 
-                    temp_table = f"{ora_schema}.{ora_table}{chunk_index}"
+            # executemany 실행 전에 데이터 타입 변환 (날짜 컬럼만 문자열로 변환)
+            df_tf = df_tf.apply(lambda row: [
+                row[col].strftime('%Y-%m-%d %H:%M:%S') if col in date_columns and pd.notnull(row[col]) else row[col]
+                for
+                col in columns], axis=1).tolist()
 
-                    create_temp_table_query = f"""
-                                       CREATE TEMPORARY TABLE {temp_table} AS
-                                       SELECT * FROM {ora_schema}.{ora_table} WHERE 1=0;
-                                       """  # 빈 임시 테이블 생성
-                    print("==================[create_temp_table_query]==================")
-                    print(create_temp_table_query)
+            print("==================[INSERT QEURY]==================")
+            print(insert_query)
 
-                    ora_cursor.execute(create_temp_table_query)
+            # BATCH INSERT 수행
+            batch_size = 10000
+            for i in range(0, len(df_tf), batch_size):
+                batch = df_tf[i: i + batch_size]
+                ora_main_cursor.executemany(insert_query, batch)
+                ora_main_connection.commit()
+                print(f"총{len(df)}건 중 {i + 10000}건 커밋 완료")
 
-                    insert_query = f"""
-                                       INSERT INTO {temp_table} ({", ".join(columns)})
-                                       VALUES ({", ".join(["%s"] * len(columns))});
-                                       """
-                    print("==================[insert_query]==================")
-                    print(insert_query)
+            ora_main_cursor.execute(f"SELECT COUNT(*) FROM {ora_main_table}")
+            print("######TMP에 들어간 건수######")
+            print(ora_main_cursor.fetchone())
 
-
-                    batch = values[i: i + batch_size]
-                    ora_cursor.executemany(insert_query, batch)
-
-                    # 3️⃣ MERGE 실행
-                    merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in pk_columns])
-
-                    update_set = ", ".join(
-                        [f"target.{col} = source.{col}" for col in columns if col not in pk_columns])
-                    insert_columns = ", ".join(columns)
-                    insert_values = ", ".join([f"source.{col}" for col in columns])
-
-                    merge_query = f"""
-                               MERGE INTO {ora_schema}.{ora_table} AS target
-                               USING {temp_table} AS source
-                               ON {merge_condition}
-                               WHEN MATCHED THEN
-                                   UPDATE SET {update_set}
-                               WHEN NOT MATCHED THEN
-                                   INSERT ({insert_columns})
-                                   VALUES ({insert_values});
-                               """
-
-                    print("==================[merge_query]==================")
-                    print(merge_query)
-
-                    ora_cursor.execute(merge_query)
-
-                    chunk_index += 1
-
-            oracle_conn.close()
-            print("커넥션 종료")
+        ora_main_connection.close()
+        print("커넥션 종료")
 
 
-    @task(task_id='task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01')
+    @task(task_id='task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01',
+          trigger_rule="all_done",
+          provide_context=True)
     def task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01(p_start):
         snow_hook = SnowflakeHook(snowflake_conn_id=snow_conn_id)
-        oracle_hook = SnowflakeHook(snowflake_conn_id=ora_conn_id)
-        oracle_conn = oracle_hook.get_conn()
+        ora_main_hook = OracleHook(oracle_conn_id=ora_main_conn_id, thick_mode=True, thick_mode_lib_dir=client_path)
+        ora_main_connection = ora_main_hook.get_conn()
 
-        ora_schema = 'MWAA'
-        ora_table = 'CU_ITNT_PET_CUST_GRD_INF_TMP'
+        snow_table = var_dict['task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01']['SNOW_TABLE']
+        ora_main_table = var_dict['task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01']['ORA_MAIN_TABLE']
+        columns = var_dict['task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01']['COLUMNS']
+        pk_columns = var_dict['task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01']['PK_COLUMNS']
 
-        query = "SELECT * FROM DW_RM.ROD_CUST_PET_GRD_INF_TMP LIMIT 100"
+        ora_schema, ora_table_name = ora_main_table.split('.')
 
-        columns = [
-            "CUST_NO", "BSIC_YM", "PET_GRD_GBCD", "RGST_ID", "RGST_IP",
-            "REG_DTM", "CHGP_ID", "CHGP_IP", "CHG_DTM"
-        ]
+        with snow_hook.get_conn() as snow_connection:
 
-        pk_columns = ["BSIC_YM", "CUST_NO"]
+            query = f"""
+                            SELECT *
+                            FROM {snow_table}
+                         """
 
-        with snow_hook.get_conn() as snow_conn:
-            df = pd.read_sql(query, snow_conn)
-
-            for col in df.select_dtypes(include=['datetime', 'datetimetz']).columns:
-                df[col] = df[col].apply(
-                    lambda x: None if pd.isnull(x) or x == pd.NaT or str(x).strip() in ['NaT', '']
-                    else x.isoformat() if isinstance(x, pd.Timestamp) else str(x)
-                )
+            print("==================[ORACLE QEURY]==================")
+            print(query)
+            df = pd.read_sql(query, snow_connection)
+            print(f"## {snow_table} 조회 카운트 : {len(df)}")
+            print(df.head(1))
 
             df.replace({np.nan: None}, inplace=True)
 
             print(df.head)
-
             print(p_start)
 
             df_tf = pd.DataFrame(index=df.index)
@@ -441,81 +517,78 @@ with DAG(
             df_tf['PET_GRD_GBCD'] = df['PET_GRD_GBCD']
             df_tf['RGST_ID'] = "2100374"
             df_tf['RGST_IP'] = "DW_SYSTEM"
-            df_tf['REG_DTM'] = pendulum.now(KST).strftime('%Y-%m-%d %H:%M:%S')
+            df_tf['REG_DTM'] = pendulum.now(KST)
             df_tf['CHGP_ID'] = "2100374"
             df_tf['CHGP_IP'] = "DW_SYSTEM"
-            df_tf['CHG_DTM'] = pendulum.now(KST).strftime('%Y-%m-%d %H:%M:%S')
+            df_tf['CHG_DTM'] = pendulum.now(KST)
 
             print(df_tf.head)
             print(len(df_tf))
 
-            chunk_index = 1
+        with ora_main_connection.cursor() as ora_main_cursor:
+            ora_schema, ora_table_name = ora_main_table.split('.')
 
-            with oracle_conn.cursor() as ora_cursor:
+            truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
+            print("==================[TRUNCATE QEURY]==================")
+            print(truncate_query)
+            ora_main_cursor.execute(truncate_query)
 
-                # MERGE 쿼리 생성 (배치 처리)
-                values = df_tf.where(pd.notnull(df_tf), None).values.tolist()
+            # 숫자형 컬럼 변환 (NaN을 None으로 변환)
+            for col in df_tf.select_dtypes(include=['number']).columns:
+                df_tf[col] = df_tf[col].astype(float).where(df_tf[col].notnull(), None)
 
-                batch_size = 10000  # 한 번에 실행할 최대 행 수
+            # 날짜 컬럼 유지 및 변환하지 않음
+            date_columns = df_tf.select_dtypes(include=['datetime', 'datetimetz']).columns
 
-                for i in range(0, len(values), batch_size):
-                    temp_table = f"{ora_schema}.{ora_table}{chunk_index}"
+            # Insert Query 수정
+            insert_query = f"""
+                                INSERT INTO {ora_main_table} ({", ".join(columns)})
+                                VALUES ({", ".join([f"TO_TIMESTAMP(:{i + 1}, 'YYYY-MM-DD HH24:MI:SS')" if col in date_columns else f":{i + 1}" for i, col in enumerate(columns)])})
+                            """
 
-                    create_temp_table_query = f"""
-                                           CREATE TEMPORARY TABLE {temp_table} AS
-                                           SELECT * FROM {ora_schema}.{ora_table} WHERE 1=0;
-                                           """  # 빈 임시 테이블 생성
-                    print("==================[create_temp_table_query]==================")
-                    print(create_temp_table_query)
+            # executemany 실행 전에 데이터 타입 변환 (날짜 컬럼만 문자열로 변환)
+            df_tf = df_tf.apply(lambda row: [
+                    row[col].strftime('%Y-%m-%d %H:%M:%S') if col in date_columns and pd.notnull(row[col]) else row[col] for
+                col in columns], axis=1).tolist()
 
-                    ora_cursor.execute(create_temp_table_query)
+            print("==================[INSERT QEURY]==================")
+            print(insert_query)
 
-                    insert_query = f"""
-                                           INSERT INTO {temp_table} ({", ".join(columns)})
-                                           VALUES ({", ".join(["%s"] * len(columns))});
-                                           """
-                    print("==================[insert_query]==================")
-                    print(insert_query)
+            # BATCH INSERT 수행
+            batch_size = 10000
+            for i in range(0, len(df_tf), batch_size):
+                batch = df_tf[i: i + batch_size]
+                ora_main_cursor.executemany(insert_query, batch)
+                ora_main_connection.commit()
+                print(f"총{len(df)}건 중 {i + 10000}건 커밋 완료")
 
-                    batch = values[i: i + batch_size]
-                    ora_cursor.executemany(insert_query, batch)
+            ora_main_cursor.execute(f"SELECT COUNT(*) FROM {ora_main_table}")
+            print("######TMP에 들어간 건수######")
+            print(ora_main_cursor.fetchone())
 
-                    # 3️⃣ MERGE 실행
-                    merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in pk_columns])
-
-                    update_set = ", ".join(
-                        [f"target.{col} = source.{col}" for col in columns if col not in pk_columns])
-                    insert_columns = ", ".join(columns)
-                    insert_values = ", ".join([f"source.{col}" for col in columns])
-
-                    merge_query = f"""
-                                   MERGE INTO {ora_schema}.{ora_table} AS target
-                                   USING {temp_table} AS source
-                                   ON {merge_condition}
-                                   WHEN MATCHED THEN
-                                       UPDATE SET {update_set}
-                                   WHEN NOT MATCHED THEN
-                                       INSERT ({insert_columns})
-                                       VALUES ({insert_values});
-                                   """
-
-                    print("==================[merge_query]==================")
-                    print(merge_query)
-
-                    ora_cursor.execute(merge_query)
-
-                    chunk_index += 1
-
-            oracle_conn.close()
-            print("커넥션 종료")
-
+        ora_main_connection.close()
+        print("커넥션 종료")
 
     task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV = task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV(p_start)
     task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01 = task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01(p_start)
+    task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql = task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql(p_start,p_end,ora_main_conn_id)
+    task_TMP_GOLD_CUST_NO_TO_HDHS = task_TMP_GOLD_CUST_NO_DW_TO_HDHS()
 
 
-    check_monthly(p_end) >> [task_SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL_M, task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV, task_CU_TCS_CUST_HIS_TO_HDHS,task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01,task_IM_VEN_CNTB_RATE_SMR_TO_HDHS]
+    check_monthly(p_end) >> [task_SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL_M,
+     task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV,
+     task_TMP_GOLD_CUST_NO_TO_HDHS,
+     task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql,
+     task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01,
+     task_IM_VEN_CNTB_RATE_SMR_TO_HDHS]
 
-    task_IM_VEN_CNTB_RATE_SMR_TO_HDHS >> task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS >> task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS
+    task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql >> task_CU_TCS_CUST_HIS_TO_HDHS
+
+    task_IM_VEN_CNTB_RATE_SMR_TO_HDHS >> task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS >> \
+    task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS >> task_HES_BRND_CTPF_RATE_DTL_TO_HDHS >> \
+    task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS >> task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS >> \
+    task_RAR_CTPF_RATE_DTL_TO_HDHS >> task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS >> \
+    task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS
+
 
 

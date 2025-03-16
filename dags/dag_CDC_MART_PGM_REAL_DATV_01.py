@@ -3,6 +3,7 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from common.common_call_procedure import execute_procedure, execute_procedure_dycl, execute_procedure_no_dycl, log_etl_completion
 from datetime import datetime, timedelta
+from common.notify_error_functions import notify_api_on_error
 import boto3
 import json
 
@@ -34,316 +35,369 @@ with DAG(
         task_id="task_SP_BITM_SELL_ETC_REAL_ORD_F015",
         python_callable=execute_procedure_dycl,
         op_args=["SP_BITM_SELL_ETC_REAL_ORD", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BITM_SELL_ETC_REAL_ORD_D028 = PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_REAL_ORD_D028",
         python_callable=execute_procedure_dycl,
         op_args=["SP_BITM_SELL_ETC_REAL_ORD", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BITM_SELL_ETC_REAL_ORD_D056 = PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_REAL_ORD_D056",
         python_callable=execute_procedure_dycl,
         op_args=["SP_BITM_SELL_ETC_REAL_ORD", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BITM_SELL_ETC_REAL_ORD_D084 = PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_REAL_ORD_D084",
         python_callable=execute_procedure_dycl,
         op_args=["SP_BITM_SELL_ETC_REAL_ORD", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RAR_BITM_SELL_ETC_REAL_SMR_3_F015 = PythonOperator(
         task_id="task_SP_RAR_BITM_SELL_ETC_REAL_SMR_3_F015",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RAR_BITM_SELL_ETC_REAL_SMR_3", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RAR_BITM_SELL_ETC_REAL_SMR_3_D028 = PythonOperator(
         task_id="task_SP_RAR_BITM_SELL_ETC_REAL_SMR_3_D028",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RAR_BITM_SELL_ETC_REAL_SMR_3", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RAR_BITM_SELL_ETC_REAL_SMR_3_D056 = PythonOperator(
         task_id="task_SP_RAR_BITM_SELL_ETC_REAL_SMR_3_D056",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RAR_BITM_SELL_ETC_REAL_SMR_3", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RAR_BITM_SELL_ETC_REAL_SMR_3_D084 = PythonOperator(
         task_id="task_SP_RAR_BITM_SELL_ETC_REAL_SMR_3_D084",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RAR_BITM_SELL_ETC_REAL_SMR_3", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BITM_SELL_ETC_EXP_ORD_D000 = PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_EXP_ORD_D000",
         python_callable=execute_procedure_dycl,
         op_args=["SP_BITM_SELL_ETC_EXP_ORD", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RIA_DTBRC_ORD_EXP_FCT_D000 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_EXP_FCT_D000",
         python_callable=execute_procedure_no_dycl,
         op_args=["SP_RIA_DTBRC_ORD_EXP_FCT", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BITM_SELL_ETC_EXP_ORD_FOR_SALE_NEWS_D000 = PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_EXP_ORD_FOR_SALE_NEWS_D000",
         python_callable=execute_procedure_dycl,
         op_args=["SP_BITM_SELL_ETC_EXP_ORD_FOR_SALE_NEWS", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RIA_DTBRC_ORD_EXP_FCT_02_D000 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_EXP_FCT_02_D000",
         python_callable=execute_procedure_no_dycl,
         op_args=["SP_RIA_DTBRC_ORD_EXP_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RIA_DTBRC_ORD_REAL_FCT_F015 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_REAL_FCT_F015",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RIA_DTBRC_ORD_REAL_FCT", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RIA_DTBRC_ORD_REAL_FCT_D028 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_REAL_FCT_D028",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RIA_DTBRC_ORD_REAL_FCT", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RIA_DTBRC_ORD_REAL_FCT_D056 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_REAL_FCT_D056",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RIA_DTBRC_ORD_REAL_FCT", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RIA_DTBRC_ORD_REAL_FCT_D084 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_REAL_FCT_D084",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RIA_DTBRC_ORD_REAL_FCT", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D001 = PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D001",
         python_callable=execute_procedure_dycl,
         op_args=["SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_F015 = PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_F015",
         python_callable=execute_procedure_dycl,
         op_args=["SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D028 = PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D028",
         python_callable=execute_procedure_dycl,
         op_args=["SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D056 = PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D056",
         python_callable=execute_procedure_dycl,
         op_args=["SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D084 = PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D084",
         python_callable=execute_procedure_dycl,
         op_args=["SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RIA_DTBRC_ORD_REAL_FCT_02_F015 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_REAL_FCT_02_F015",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RIA_DTBRC_ORD_REAL_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RIA_DTBRC_ORD_REAL_FCT_02_D028 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_REAL_FCT_02_D028",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RIA_DTBRC_ORD_REAL_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RIA_DTBRC_ORD_REAL_FCT_02_D056 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_REAL_FCT_02_D056",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RIA_DTBRC_ORD_REAL_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RIA_DTBRC_ORD_REAL_FCT_02_D084 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_REAL_FCT_02_D084",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RIA_DTBRC_ORD_REAL_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RAR_BITM_ORD_PNTM_SELL_ETC_REAL_SMR_2_F015 = PythonOperator(
         task_id="task_SP_RAR_BITM_ORD_PNTM_SELL_ETC_REAL_SMR_2_F015",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RAR_BITM_ORD_PNTM_SELL_ETC_REAL_SMR_2", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RAR_BITM_ORD_PNTM_SELL_ETC_REAL_SMR_2_D028 = PythonOperator(
         task_id="task_SP_RAR_BITM_ORD_PNTM_SELL_ETC_REAL_SMR_2_D028",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RAR_BITM_ORD_PNTM_SELL_ETC_REAL_SMR_2", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RAR_BITM_ORD_PNTM_SELL_ETC_REAL_SMR_2_D056 = PythonOperator(
         task_id="task_SP_RAR_BITM_ORD_PNTM_SELL_ETC_REAL_SMR_2_D056",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RAR_BITM_ORD_PNTM_SELL_ETC_REAL_SMR_2", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_RAR_BITM_ORD_PNTM_SELL_ETC_REAL_SMR_2_D084 = PythonOperator(
         task_id="task_SP_RAR_BITM_ORD_PNTM_SELL_ETC_REAL_SMR_2_D084",
         python_callable=execute_procedure_dycl,
         op_args=["SP_RAR_BITM_ORD_PNTM_SELL_ETC_REAL_SMR_2", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
         provide_context=True,
-        trigger_rule="all_done"
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_PIA_BROD_ANAL_DLU_FCT_02_D028 = PythonOperator(
         task_id="task_SP_PIA_BROD_ANAL_DLU_FCT_02_D028",
         python_callable=execute_procedure_dycl,
         op_args=["SP_PIA_BROD_ANAL_DLU_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_PIA_BROD_ANAL_DLU_FCT_02_D056 = PythonOperator(
         task_id="task_SP_PIA_BROD_ANAL_DLU_FCT_02_D056",
         python_callable=execute_procedure_dycl,
         op_args=["SP_PIA_BROD_ANAL_DLU_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_PIA_BROD_ANAL_DLU_FCT_02_D084 = PythonOperator(
         task_id="task_SP_PIA_BROD_ANAL_DLU_FCT_02_D084",
         python_callable=execute_procedure_dycl,
         op_args=["SP_PIA_BROD_ANAL_DLU_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_PIA_BROD_ANAL_DLU_FCT_01_D028 = PythonOperator(
         task_id="task_SP_PIA_BROD_ANAL_DLU_FCT_01_D028",
         python_callable=execute_procedure_dycl,
         op_args=["SP_PIA_BROD_ANAL_DLU_FCT_01", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_PIA_BROD_ANAL_DLU_FCT_01_D056 = PythonOperator(
         task_id="task_SP_PIA_BROD_ANAL_DLU_FCT_01_D056",
         python_callable=execute_procedure_dycl,
         op_args=["SP_PIA_BROD_ANAL_DLU_FCT_01", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_PIA_BROD_ANAL_DLU_FCT_01_D084 = PythonOperator(
         task_id="task_SP_PIA_BROD_ANAL_DLU_FCT_01_D084",
         python_callable=execute_procedure_dycl,
         op_args=["SP_PIA_BROD_ANAL_DLU_FCT_01", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_D028 = PythonOperator(
         task_id="task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_D028",
         python_callable=execute_procedure_dycl,
         op_args=["SP_PAR_SHPL_BROD_ARLT_DLU_FCT", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_01_D028 = PythonOperator(
         task_id="task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_01_D028",
         python_callable=execute_procedure_dycl,
         op_args=["SP_PAR_SHPL_BROD_ARLT_DLU_FCT_01", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_D056 = PythonOperator(
         task_id="task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_D056",
         python_callable=execute_procedure_dycl,
         op_args=["SP_PAR_SHPL_BROD_ARLT_DLU_FCT", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_01_D056 = PythonOperator(
         task_id="task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_01_D056",
         python_callable=execute_procedure_dycl,
         op_args=["SP_PAR_SHPL_BROD_ARLT_DLU_FCT_01", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_D084 = PythonOperator(
         task_id="task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_D084",
         python_callable=execute_procedure_dycl,
         op_args=["SP_PAR_SHPL_BROD_ARLT_DLU_FCT", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_01_D084 = PythonOperator(
         task_id="task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_01_D084",
         python_callable=execute_procedure_dycl,
         op_args=["SP_PAR_SHPL_BROD_ARLT_DLU_FCT_01", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done"
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
     )
 
     task_SP_TRUNC_MORF_BITM_SELL_ETC_REAL >> \
