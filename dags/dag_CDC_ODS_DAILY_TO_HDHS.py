@@ -143,10 +143,6 @@ def snow_to_snow_merge2(snow_conn_id, ora_main_conn_id, snow_table, ora_main_tab
 
                 print(f"총{len(df)}건 중 {i+10000}건 커밋 완료")
 
-            ora_main_cursor.execute(f"SELECT COUNT(*) FROM {ora_main_table}")
-            print("###### TMP에 들어간 건수 ######")
-            print(ora_main_cursor.fetchone())
-
     ora_main_connection.close()
     print("커넥션 종료")
 
@@ -294,45 +290,45 @@ with DAG(
 
     task_RAR_REAL_SWRT_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_REAL_SWRT_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_RAR_REAL_SWRT_DTL_TO_HDHS']['SNOW_TABLE'], var_dict['task_RAR_REAL_SWRT_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_RAR_REAL_SWRT_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_REAL_SWRT_DTL_TO_HDHS']['PK_COLUMNS'],
                  REAL_SWRT_QEURY],
         provide_context=True,
-        # on_failure_callback=notify_api_on_error,
+        on_failure_callback=notify_api_on_error,
         trigger_rule="all_done"
     )
 
     task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS']['SNOW_TABLE'], var_dict['task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS']['PK_COLUMNS'],
                  REAL_SWRT_QEURY],
         provide_context=True,
-        # on_failure_callback=notify_api_on_error,
+        on_failure_callback=notify_api_on_error,
         trigger_rule="all_done"
     )
 
     task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS']['SNOW_TABLE'], var_dict['task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS']['PK_COLUMNS'],
                  REAL_SWRT_QEURY],
         provide_context=True,
-        # on_failure_callback=notify_api_on_error,
+        on_failure_callback=notify_api_on_error,
         trigger_rule="all_done"
     )
 
     task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS']['SNOW_TABLE'], var_dict['task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS']['PK_COLUMNS'],
                  REAL_SWRT_QEURY],
         provide_context=True,
-        # on_failure_callback=notify_api_on_error,
+        on_failure_callback=notify_api_on_error,
         trigger_rule="all_done"
     )
 
@@ -343,7 +339,7 @@ with DAG(
                  var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['COLUMNS'], var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['PK_COLUMNS'],
                  task_CU_CUST_MKTG_MST_TO_HDHS_QEURY],
         provide_context=True,
-        # on_failure_callback=notify_api_on_error,
+        on_failure_callback=notify_api_on_error,
         trigger_rule="all_done"
     )
 
@@ -354,7 +350,7 @@ with DAG(
                  var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['COLUMNS'], var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['PK_COLUMNS'],
                  task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS_QEURY],
         provide_context=True,
-        # on_failure_callback=notify_api_on_error,
+        on_failure_callback=notify_api_on_error,
         trigger_rule="all_done"
     )
 
@@ -365,7 +361,7 @@ with DAG(
                  var_dict['task_BCU_CUST_TNDC_INF_TO_HDHS']['COLUMNS'], var_dict['task_BCU_CUST_TNDC_INF_TO_HDHS']['PK_COLUMNS'],
                  task_BCU_CUST_TNDC_INF_TO_HDHS_QEURY],
         provide_context=True,
-        # on_failure_callback=notify_api_on_error,
+        on_failure_callback=notify_api_on_error,
         trigger_rule="all_done"
     )
 
@@ -376,7 +372,7 @@ with DAG(
                  var_dict['task_HES_RNTL_ARLT_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_RNTL_ARLT_DTL_TO_HDHS']['PK_COLUMNS'],
                  HES_RNTL_ARLT_DTL_TO_HDHS_QUERY],
         provide_context=True,
-        # on_failure_callback=notify_api_on_error,
+        on_failure_callback=notify_api_on_error,
         trigger_rule="all_done"
     )
 
@@ -388,7 +384,7 @@ with DAG(
                  var_dict['task_BOD_ORD_DTL_TO_HDHS']['COLUMNS'], var_dict['task_BOD_ORD_DTL_TO_HDHS']['PK_COLUMNS'],
                  ETL_DTM_QUERY],
         provide_context=True,
-        # on_failure_callback=notify_api_on_error,
+        on_failure_callback=notify_api_on_error,
         trigger_rule="all_done"
     )
 
@@ -399,7 +395,7 @@ with DAG(
                  var_dict['task_RDM_SELL_MDA_DIM_TO_HDHS']['COLUMNS'], var_dict['task_RDM_SELL_MDA_DIM_TO_HDHS']['PK_COLUMNS'],
                  ""],
         provide_context=True,
-        # on_failure_callback=notify_api_on_error,
+        on_failure_callback=notify_api_on_error,
         trigger_rule="all_done"
     )
 
@@ -411,7 +407,7 @@ with DAG(
                  var_dict['task_RCA_MDA_AREA_CALL_HOU_FCT_TO_HDHS']['COLUMNS'], var_dict['task_RCA_MDA_AREA_CALL_HOU_FCT_TO_HDHS']['PK_COLUMNS'],
                  ""],
         provide_context=True,
-        # on_failure_callback=notify_api_on_error,
+        on_failure_callback=notify_api_on_error,
         trigger_rule="all_done"
     )
 

@@ -181,7 +181,7 @@ with DAG(
     task_SP_TRUNCATE_FOR_DW = PythonOperator(
         task_id="task_SP_TRUNCATE_FOR_DW",
         python_callable=execute_procedure,
-        op_args=["HDHS_NSTD.SP_TRUNCATE_FOR_DW", p_start, p_end],
+        op_args=["HDHS_NSTD.SP_TRUNCATE_FOR_DW", p_start, p_end,"conn_oracle_main"],
         trigger_rule="all_done",
         provide_context=True,
         on_failure_callback=notify_api_on_error
