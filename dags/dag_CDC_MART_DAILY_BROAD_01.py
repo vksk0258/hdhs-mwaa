@@ -1,7 +1,9 @@
 from airflow import DAG
 from airflow.decorators import task
 from airflow.exceptions import AirflowSkipException,AirflowFailException
+from common.common_call_procedure import execute_procedure, execute_procedure_dycl, execute_procedure_no_dycl, log_etl_completion
 from airflow.models import DagRun, TaskInstance
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.utils.state import State
 from airflow.operators.python import PythonOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
@@ -22,143 +24,19 @@ params = json.load(response['Body'])
 p_start = params.get("$$P_START")
 p_end = params.get("$$P_END")
 
-def calculate_params(task_id, p_start, p_end):
-    # 1. task_id에서 맨 뒤 _다음 문자 추출
-    key_char = task_id.split("_")[-1][0]  # 맨 뒤 _ 다음의 첫 번째 문자
+snow_conn_id = 'conn_snowflake_etl'
 
-    # 2. from_to_chk 변수 계산
-    if key_char == 'F':
-        from_to_chk = 'from_to_day'
-    elif key_char == 'D':
-        from_to_chk = 'day'
-    elif key_char == 'M':
-        from_to_chk = 'month'
-    else:
-        raise ValueError("Invalid key_char: Expected 'F', 'D', or 'M'")
-
-    # 3. v_p_dcyl 변수 계산 (첫 번째 문자 이후 숫자 3자리 추출)
-    v_p_dcyl = int(task_id.split("_")[-1][1:4])
-
-    # p_start와 p_end 값을 datetime 형식으로 변환
-    p_start_date = datetime.strptime(p_start, "%Y%m%d")
-    p_end_date = datetime.strptime(p_end, "%Y%m%d")
-
-    # 4. v_p_start 변수 계산
-    v_p_start_date = p_start_date - timedelta(days=v_p_dcyl)
-    v_p_start = v_p_start_date.strftime("%Y%m%d")
-
-    # 5. v_p_end 변수 계산
-    if from_to_chk == 'from_to_day':
-        v_p_end = p_end  # 그대로 사용
-    else:
-        v_p_end_date = p_end_date - timedelta(days=v_p_dcyl)
-        v_p_end = v_p_end_date.strftime("%Y%m%d")
-
-    # 6. p_dcyl 변수 계산
-    if from_to_chk == 'from_to_day':
-        p_dcyl = 0
-    else:
-        p_dcyl = v_p_dcyl
-
-    # 최종 결과 반환
-    return [v_p_start, v_p_end, p_dcyl]
-
-def execute_procedure_dycl(procedure_name, p_start, p_end, **kwargs):
-    """
-    Executes a stored procedure in Snowflake with calculated parameters.
-    """
-    ti = kwargs['task_instance']
-    task_id = ti.task_id
-    state = ti.state
-    ti.xcom_push(key='task_status', value=state)
-    print(f"Task ID: {task_id}")
-    # Calculate parameters based on task_id
-    v_p_start, v_p_end, p_dcyl = calculate_params(task_id, p_start, p_end)
-
-    # Snowflake procedure execution
-    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
-
-    try:
-        with snowflake_hook.get_conn() as conn:
-            with conn.cursor() as cur:
-                query = f"CALL ETL_SERVICE.{procedure_name}('{v_p_start}', '{v_p_end}',{p_dcyl})"
-                print(query)
-                cur.execute(query)
-                result = cur.fetchall()
-                result_message = result[0][0] if result and result[0] else "No result returned"
-                print(f"Procedure result: {result_message}")
-    except Exception as e:
-        result_message = str(e)
-        print(f"Procedure execute error message: {result_message}")
-
-
-
-def execute_procedure_no_dycl(procedure_name, p_start, p_end, **kwargs):
-    """
-    Executes a stored procedure in Snowflake with calculated parameters.
-    """
-    task_id = kwargs['task_instance'].task_id
-    print(f"Task ID: {task_id}")
-    # Calculate parameters based on task_id
-    v_p_start, v_p_end, p_dcyl = calculate_params(task_id, p_start, p_end)
-
-    # Snowflake procedure execution
-    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
-
-    try:
-        with snowflake_hook.get_conn() as conn:
-            with conn.cursor() as cur:
-                query = f"CALL ETL_SERVICE.{procedure_name}('{v_p_start}', '{v_p_end}')"
-                print(query)
-                cur.execute(query)
-                result = cur.fetchall()
-                result_message = result[0][0] if result and result[0] else "No result returned"
-                print(f"Procedure result: {result_message}")
-    except Exception as e:
-        result_message = str(e)
-        print(f"Procedure execute error message: {result_message}")
-
-
-def execute_procedure(procedure_name, p_start, p_end,**kwargs):
-    """
-    Executes a stored procedure in Snowflake and logs the result.
-    """
-    snowflake_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_etl')
-
-    ti = kwargs['task_instance']
-    state = ti.state
-    ti.xcom_push(key='task_status', value=state)
-
-    try:
-        with snowflake_hook.get_conn() as conn:
-            with conn.cursor() as cur:
-                query = f"CALL ETL_SERVICE.{procedure_name}('{p_start}', '{p_end}')"
-                print(query)
-                cur.execute(query)
-                result = cur.fetchall()
-                # Handle empty result properly
-                result_message = result[0][0] if result and result[0] else "No result returned"
-                print(f"Procedure result: {result_message}")
-    except Exception as e:
-        result_message = str(e)
-        print(f"Procedure execute error message: {result_message}")
-
-
-def log_etl_completion(**kwargs):
-    complete_time = kwargs['execution_date'].in_tz(pendulum.timezone("Asia/Seoul")).strftime('%Y-%m-%d %H:%M:%S')
-    print(f"*** {complete_time} : CDC_MART_LEV_02 프로시져 실행 완료 **")
-
-with DAG(
+with (DAG(
     dag_id="dag_CDC_MART_DAILY_BROAD_01",
     schedule_interval=None,
     catchup=False,
     tags=["현대홈쇼핑","dag_DD01_0630_DAILY_BROAD_01","MART프로시져"]
-) as dag:
+) as dag):
 
     task_SP_DW_USE_RATIO = PythonOperator(
         task_id="task_SP_DW_USE_RATIO",
         python_callable=execute_procedure,
-        op_args=["SP_DW_USE_RATIO", p_start, p_end],
+        op_args=["SP_DW_USE_RATIO", p_start, p_end, snow_conn_id],
         trigger_rule="all_done",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -167,7 +45,7 @@ with DAG(
     task_SP_BOD_ORD_CTPF_VACO_DTL = PythonOperator(
         task_id="task_SP_BOD_ORD_CTPF_VACO_DTL",
         python_callable=execute_procedure,
-        op_args=["SP_BOD_ORD_CTPF_VACO_DTL", p_start, p_end],
+        op_args=["SP_BOD_ORD_CTPF_VACO_DTL", p_start, p_end, snow_conn_id],
         trigger_rule="all_done",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -176,7 +54,7 @@ with DAG(
     task_SP_BOD_ORD_CTPF_VACO_DTL2 = PythonOperator(
         task_id="task_SP_BOD_ORD_CTPF_VACO_DTL2",
         python_callable=execute_procedure,
-        op_args=["SP_BOD_ORD_CTPF_VACO_DTL2", p_start, p_end],
+        op_args=["SP_BOD_ORD_CTPF_VACO_DTL2", p_start, p_end, snow_conn_id],
         trigger_rule="all_done",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -185,7 +63,7 @@ with DAG(
     task_SP_BOD_ORD_PTC = PythonOperator(
         task_id="task_SP_BOD_ORD_PTC",
         python_callable=execute_procedure,
-        op_args=["SP_BOD_ORD_PTC", p_start, p_end],
+        op_args=["SP_BOD_ORD_PTC", p_start, p_end, snow_conn_id],
         trigger_rule="all_done",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -211,7 +89,7 @@ with DAG(
     task_SP_BOD_ORD_DC_DTL = PythonOperator(
         task_id="task_SP_BOD_ORD_DC_DTL",
         python_callable=execute_procedure,
-        op_args=["SP_BOD_ORD_DC_DTL", p_start, p_end],
+        op_args=["SP_BOD_ORD_DC_DTL", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -220,7 +98,7 @@ with DAG(
     task_SP_RIA_TV_BITM_ORD_FCT = PythonOperator(
         task_id="task_SP_RIA_TV_BITM_ORD_FCT",
         python_callable=execute_procedure,
-        op_args=["SP_RIA_TV_BITM_ORD_FCT", p_start, p_end],
+        op_args=["SP_RIA_TV_BITM_ORD_FCT", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -229,7 +107,7 @@ with DAG(
     task_SP_RIA_BITM_ORD_FCT_01 = PythonOperator(
         task_id="task_SP_RIA_BITM_ORD_FCT_01",
         python_callable=execute_procedure,
-        op_args=["SP_RIA_BITM_ORD_FCT_01", p_start, p_end],
+        op_args=["SP_RIA_BITM_ORD_FCT_01", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -238,7 +116,7 @@ with DAG(
     task_SP_RIA_BITM_SELL_MDA_FCT = PythonOperator(
         task_id="task_SP_RIA_BITM_SELL_MDA_FCT",
         python_callable=execute_procedure,
-        op_args=["SP_RIA_BITM_SELL_MDA_FCT", p_start, p_end],
+        op_args=["SP_RIA_BITM_SELL_MDA_FCT", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -247,7 +125,7 @@ with DAG(
     task_SP_RIA_BITM_ORD_CUST_FCT = PythonOperator(
         task_id="task_SP_RIA_BITM_ORD_CUST_FCT",
         python_callable=execute_procedure,
-        op_args=["SP_RIA_BITM_ORD_CUST_FCT", p_start, p_end],
+        op_args=["SP_RIA_BITM_ORD_CUST_FCT", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -256,7 +134,7 @@ with DAG(
     task_SP_BITM_SELL_EXP_ORD_D001 = PythonOperator(
         task_id="task_SP_BITM_SELL_EXP_ORD_D001",
         python_callable=execute_procedure_dycl,
-        op_args=["SP_BITM_SELL_EXP_ORD", p_start, p_end],
+        op_args=["SP_BITM_SELL_EXP_ORD", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -265,7 +143,7 @@ with DAG(
     task_SP_RIA_BITM_ORD_EXP_FCT_D001 = PythonOperator(
         task_id="task_SP_RIA_BITM_ORD_EXP_FCT_D001",
         python_callable=execute_procedure_no_dycl,
-        op_args=["SP_RIA_BITM_ORD_EXP_FCT", p_start, p_end],
+        op_args=["SP_RIA_BITM_ORD_EXP_FCT", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -274,7 +152,7 @@ with DAG(
     task_SP_BITM_SELL_EXP_ORD_FOR_SALE_NEWS_D001 = PythonOperator(
         task_id="task_SP_BITM_SELL_EXP_ORD_FOR_SALE_NEWS_D001",
         python_callable=execute_procedure_dycl,
-        op_args=["SP_BITM_SELL_EXP_ORD_FOR_SALE_NEWS", p_start, p_end],
+        op_args=["SP_BITM_SELL_EXP_ORD_FOR_SALE_NEWS", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -283,7 +161,7 @@ with DAG(
     task_SP_RIA_BITM_ORD_EXP_FCT_02_D001 = PythonOperator(
         task_id="task_SP_RIA_BITM_ORD_EXP_FCT_02_D001",
         python_callable=execute_procedure_no_dycl,
-        op_args=["SP_RIA_BITM_ORD_EXP_FCT_02", p_start, p_end],
+        op_args=["SP_RIA_BITM_ORD_EXP_FCT_02", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -292,7 +170,7 @@ with DAG(
     task_SP_BITM_SELL_REAL_ORD_D001 = PythonOperator(
         task_id="task_SP_BITM_SELL_REAL_ORD_D001",
         python_callable=execute_procedure_dycl,
-        op_args=["SP_BITM_SELL_REAL_ORD", p_start, p_end],
+        op_args=["SP_BITM_SELL_REAL_ORD", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -301,7 +179,7 @@ with DAG(
     task_SP_RIA_BITM_ORD_REAL_FCT_D001 = PythonOperator(
         task_id="task_SP_RIA_BITM_ORD_REAL_FCT_D001",
         python_callable=execute_procedure_dycl,
-        op_args=["SP_RIA_BITM_ORD_REAL_FCT", p_start, p_end],
+        op_args=["SP_RIA_BITM_ORD_REAL_FCT", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -310,7 +188,7 @@ with DAG(
     task_SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_D001 = PythonOperator(
         task_id="task_SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_D001",
         python_callable=execute_procedure_dycl,
-        op_args=["SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS", p_start, p_end],
+        op_args=["SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -319,7 +197,7 @@ with DAG(
     task_SP_RIA_BITM_ORD_REAL_FCT_02_D001 = PythonOperator(
         task_id="task_SP_RIA_BITM_ORD_REAL_FCT_02_D001",
         python_callable=execute_procedure_dycl,
-        op_args=["SP_RIA_BITM_ORD_REAL_FCT_02", p_start, p_end],
+        op_args=["SP_RIA_BITM_ORD_REAL_FCT_02", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -328,7 +206,7 @@ with DAG(
     task_SP_BITM_SELL_ETC_EXP_ORD_D001= PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_EXP_ORD_D001",
         python_callable=execute_procedure_dycl,
-        op_args=["SP_BITM_SELL_ETC_EXP_ORD", p_start, p_end],
+        op_args=["SP_BITM_SELL_ETC_EXP_ORD", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -337,7 +215,7 @@ with DAG(
     task_SP_RIA_DTBRC_ORD_EXP_FCT_D001 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_EXP_FCT_D001",
         python_callable=execute_procedure_no_dycl,
-        op_args=["SP_RIA_DTBRC_ORD_EXP_FCT", p_start, p_end],
+        op_args=["SP_RIA_DTBRC_ORD_EXP_FCT", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -346,7 +224,7 @@ with DAG(
     task_SP_BITM_SELL_ETC_EXP_ORD_FOR_SALE_NEWS_D001 = PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_EXP_ORD_FOR_SALE_NEWS_D001",
         python_callable=execute_procedure_dycl,
-        op_args=["SP_BITM_SELL_ETC_EXP_ORD_FOR_SALE_NEWS", p_start, p_end],
+        op_args=["SP_BITM_SELL_ETC_EXP_ORD_FOR_SALE_NEWS", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -355,7 +233,7 @@ with DAG(
     task_SP_RIA_DTBRC_ORD_EXP_FCT_02_D001 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_EXP_FCT_02_D001",
         python_callable=execute_procedure_no_dycl,
-        op_args=["SP_RIA_DTBRC_ORD_EXP_FCT_02", p_start, p_end],
+        op_args=["SP_RIA_DTBRC_ORD_EXP_FCT_02", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -364,7 +242,7 @@ with DAG(
     task_SP_BITM_SELL_ETC_REAL_ORD_D001 = PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_REAL_ORD_D001",
         python_callable=execute_procedure_dycl,
-        op_args=["SP_BITM_SELL_ETC_REAL_ORD", p_start, p_end],
+        op_args=["SP_BITM_SELL_ETC_REAL_ORD", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -373,7 +251,7 @@ with DAG(
     task_SP_RIA_DTBRC_ORD_REAL_FCT_D001 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_REAL_FCT_D001",
         python_callable=execute_procedure_dycl,
-        op_args=["SP_RIA_DTBRC_ORD_REAL_FCT", p_start, p_end],
+        op_args=["SP_RIA_DTBRC_ORD_REAL_FCT", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -382,7 +260,7 @@ with DAG(
     task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D001 = PythonOperator(
         task_id="task_SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS_D001",
         python_callable=execute_procedure_dycl,
-        op_args=["SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS", p_start, p_end],
+        op_args=["SP_BITM_SELL_ETC_REAL_ORD_FOR_SALE_NEWS", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -391,7 +269,7 @@ with DAG(
     task_SP_RIA_DTBRC_ORD_REAL_FCT_02_D001 = PythonOperator(
         task_id="task_SP_RIA_DTBRC_ORD_REAL_FCT_02_D001",
         python_callable=execute_procedure_dycl,
-        op_args=["SP_RIA_DTBRC_ORD_REAL_FCT_02", p_start, p_end],
+        op_args=["SP_RIA_DTBRC_ORD_REAL_FCT_02", p_start, p_end, snow_conn_id],
         trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
@@ -417,10 +295,24 @@ with DAG(
     #     trigger_rule="none_skipped"
     # )
 
+    trigger_dag_CDC_ODS_DAILY_TO_HDHS = TriggerDagRunOperator(
+        task_id='trigger_dag_CDC_ODS_DAILY_TO_HDHS',
+        trigger_dag_id='dag_CDC_ODS_DAILY_TO_HDHS',
+        reset_dag_run=True,  # 이미 수행된 dag여도 수행 할 것인지
+        wait_for_completion=True,  # 트리거 하는 dag가 끝날때까지 기다릴 것인지
+        poke_interval=60,
+        allowed_states=['success'],  # 트리거 하는 dag가 어떤 상태여야 오퍼레이터가 성공으로 끝나는지
+        trigger_rule="all_done"
+    )
+
+    fail_dag = fail_dag()
+    if_fail_task = if_fail_task()
+
     [task_SP_DW_USE_RATIO, task_SP_BOD_ORD_CTPF_VACO_DTL]
 
-    task_SP_BOD_ORD_CTPF_VACO_DTL >> task_SP_BOD_ORD_CTPF_VACO_DTL2 >> task_SP_BOD_ORD_PTC >> fail_dag() >> if_fail_task() >>task_SP_BOD_ORD_DC_DTL >> [task_SP_RIA_TV_BITM_ORD_FCT,
-                                                                                       task_SP_RIA_BITM_ORD_FCT_01]
+    task_SP_BOD_ORD_CTPF_VACO_DTL >> task_SP_BOD_ORD_CTPF_VACO_DTL2 >> task_SP_BOD_ORD_PTC >> [fail_dag, trigger_dag_CDC_ODS_DAILY_TO_HDHS]
+
+    fail_dag >> if_fail_task >>task_SP_BOD_ORD_DC_DTL >> [task_SP_RIA_TV_BITM_ORD_FCT, task_SP_RIA_BITM_ORD_FCT_01]
     task_SP_RIA_TV_BITM_ORD_FCT >> task_SP_RIA_BITM_SELL_MDA_FCT >> task_SP_RIA_BITM_ORD_CUST_FCT
 
     task_SP_RIA_BITM_ORD_FCT_01 >> [task_SP_BITM_SELL_EXP_ORD_D001, task_SP_BITM_SELL_ETC_EXP_ORD_D001]

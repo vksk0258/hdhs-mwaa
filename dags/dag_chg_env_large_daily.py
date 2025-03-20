@@ -6,18 +6,14 @@ from airflow.models import Variable
 from airflow.operators.bash import BashOperator
 
 with DAG(
-    dag_id="dags_bash_with_variable",
-    # 이덱은 매일 6시 30분에 시작
-    schedule="10 9 * * *",
-    # 덱이 언제 부터 돌지 TZ=타임존
-    start_date=pendulum.datetime(2024, 7, 1, tz="Asia/Seoul"),
-    # 캐치업 배치 중간에 누락된 구간을 돌릴지 말지
-    # 1월 1일부터 3월 1일까지 누락된 덱을 한번에 돌아가게 된다 3월 1일에 웬만하면 false
+    dag_id="dag_chg_env_large_daily",
+    schedule='40 0 * * *',
+    start_date=pendulum.datetime(2025, 3, 19, tz="Asia/Seoul"),
     catchup=False,
     dagrun_timeout=datetime.timedelta(minutes=60),
-    tags=["인프런","bash"]
+    tags=["현대홈쇼핑","config", "환경"]
 ) as dag:
-    var_value = Variable.get("sample_key")
+    var_value = Variable.get("chg_env_class_to_large_cli")
 
     bash_var_1 = BashOperator(
         task_id="bash_var_1",

@@ -131,13 +131,13 @@ with DAG(
         task_id="task_SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL_M",
         python_callable=execute_procedure,
         op_args=["SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL_M", p_start, p_end, 'conn_snowflake_etl'],
-        trigger_rule="all_done",
+        trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
 
     )
     @task(task_id='task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql',
-          trigger_rule="all_done",
+          trigger_rule="none_skipped",
           provide_context=True,
           on_failure_callback=notify_api_on_error
           )
@@ -163,7 +163,7 @@ with DAG(
                  var_dict['task_CU_TCS_CUST_HIS_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_CU_TCS_CUST_HIS_TO_HDHS']['COLUMNS'], var_dict['task_CU_TCS_CUST_HIS_TO_HDHS']['PK_COLUMNS'],
                  ""],
-        trigger_rule="all_done",
+        trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
 
@@ -176,7 +176,7 @@ with DAG(
                  var_dict['task_IM_VEN_CNTB_RATE_SMR_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_IM_VEN_CNTB_RATE_SMR_TO_HDHS']['COLUMNS'], var_dict['task_IM_VEN_CNTB_RATE_SMR_TO_HDHS']['PK_COLUMNS'],
                  CONDITION_QUERY],
-        trigger_rule="all_done",
+        trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
 
@@ -189,7 +189,7 @@ with DAG(
                  var_dict['task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS']['COLUMNS'], var_dict['task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS']['PK_COLUMNS'],
                  CONDITION_QUERY2],
-        trigger_rule="all_done",
+        trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
 
@@ -202,7 +202,7 @@ with DAG(
                  var_dict['task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS']['COLUMNS'], var_dict['task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS']['PK_COLUMNS'],
                  CONDITION_QUERY2],
-        trigger_rule="all_done",
+        trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
 
@@ -215,7 +215,7 @@ with DAG(
                  var_dict['task_HES_BRND_CTPF_RATE_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_HES_BRND_CTPF_RATE_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_BRND_CTPF_RATE_DTL_TO_HDHS']['PK_COLUMNS'],
                  CONDITION_QUERY],
-        trigger_rule="all_done",
+        trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
     )
@@ -227,7 +227,7 @@ with DAG(
                  var_dict['task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS']['PK_COLUMNS'],
                  CONDITION_QUERY],
-        trigger_rule="all_done",
+        trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
     )
@@ -239,7 +239,7 @@ with DAG(
                  var_dict['task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS']['PK_COLUMNS'],
                  CONDITION_QUERY],
-        trigger_rule="all_done",
+        trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
     )
@@ -251,7 +251,7 @@ with DAG(
                  var_dict['task_RAR_CTPF_RATE_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_RAR_CTPF_RATE_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_CTPF_RATE_DTL_TO_HDHS']['PK_COLUMNS'],
                  CONDITION_QUERY2],
-        trigger_rule="all_done",
+        trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
     )
@@ -263,7 +263,7 @@ with DAG(
                  var_dict['task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS']['PK_COLUMNS'],
                  CONDITION_QUERY2],
-        trigger_rule="all_done",
+        trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
     )
@@ -275,13 +275,13 @@ with DAG(
                  var_dict['task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS']['PK_COLUMNS'],
                  CONDITION_QUERY2],
-        trigger_rule="all_done",
+        trigger_rule="none_skipped",
         provide_context=True,
         on_failure_callback=notify_api_on_error
     )
 
     @task(task_id='task_TMP_GOLD_CUST_NO_DW_TO_HDHS',
-          trigger_rule="all_done",
+          trigger_rule="none_skipped",
           provide_context=True)
     def task_TMP_GOLD_CUST_NO_DW_TO_HDHS():
         snow_hook = SnowflakeHook(snowflake_conn_id=snow_conn_id)
@@ -359,7 +359,7 @@ with DAG(
 
 
     @task(task_id='task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV',
-          trigger_rule="all_done",
+          trigger_rule="none_skipped",
           provide_context=True)
     def task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV(p_start):
         snow_hook = SnowflakeHook(snowflake_conn_id=snow_conn_id)
@@ -478,7 +478,7 @@ with DAG(
 
 
     @task(task_id='task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01',
-          trigger_rule="all_done",
+          trigger_rule="none_skipped",
           provide_context=True)
     def task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01(p_start):
         snow_hook = SnowflakeHook(snowflake_conn_id=snow_conn_id)

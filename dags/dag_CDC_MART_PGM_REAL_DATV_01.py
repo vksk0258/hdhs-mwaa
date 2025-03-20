@@ -400,6 +400,15 @@ with DAG(
         on_failure_callback=notify_api_on_error
     )
 
+    task_SP_RAR_REAl_SMR_ETC_01 = PythonOperator(
+        task_id="task_SP_RAR_REAl_SMR_ETC_01",
+        python_callable=execute_procedure,
+        op_args=["SP_RAR_REAl_SMR_ETC", p_start, p_end, 'conn_snowflake_etl'],
+        trigger_rule="all_done",
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+    )
+
     task_SP_TRUNC_MORF_BITM_SELL_ETC_REAL >> \
     task_SP_BITM_SELL_ETC_REAL_ORD_F015 >> \
     task_SP_BITM_SELL_ETC_REAL_ORD_D028 >> \
@@ -440,7 +449,8 @@ with DAG(
     task_SP_PIA_BROD_ANAL_DLU_FCT_02_D056 >> task_SP_PIA_BROD_ANAL_DLU_FCT_02_D084 >> \
     task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_D028 >> task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_01_D028 >> \
     task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_D056 >> task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_01_D056 >> \
-    task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_D084 >> task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_01_D084
+    task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_D084 >> task_SP_PAR_SHPL_BROD_ARLT_DLU_FCT_01_D084 >> \
+    task_SP_RAR_REAl_SMR_ETC_01
 
 
 

@@ -118,20 +118,23 @@ def ora_to_snow_merge(etl_conn_id, load_conn_id, etl_table, load_table, columns,
     load_connection.close()
     print("커넥션 종료")
 
+
 CONDITION_QEURY = f"""
-WHERE CHG_DTM >= TO_DATE('{var.daily_main_p_start}' || '000000', 'YYYYMMDDHH24MISS') 
+WHERE CHG_DTM >= TO_DATE('{var.daily_main_p_start}' || '000000', 'YYYYMMDDHH24MISS')
 AND CHG_DTM <= TO_DATE('{var.daily_main_p_end}' || '235959', 'YYYYMMDDHH24MISS') + 1
 """
+
 
 CONDITION_QEURY2 = f"""
 WHERE CHG_DTM >= TO_DATE('{var.daily_main_p_start}' || '000000', 'YYYYMMDDHH24MISS')
 AND CHG_DTM <= TO_DATE('{var.daily_main_p_end}' || '235959', 'YYYYMMDDHH24MISS')
 """
 
+
 # DAG 정의
 with DAG(
         dag_id="dag_CDC_ODS_SUB_HES",  # DAG의 고유 식별자
-        schedule_interval='40 0 * * *',
+        schedule_interval='0 1 * * *',
         start_date=pendulum.datetime(2025, 3, 1, tz="Asia/Seoul"),
         catchup=False,  # 과거 데이터 실행 스킵
         dagrun_timeout=datetime.timedelta(minutes=6000),  # DAG 실행 제한 시간

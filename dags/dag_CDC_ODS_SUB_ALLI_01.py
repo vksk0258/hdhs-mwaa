@@ -105,7 +105,7 @@ def process_in_batches(table, columns, pk_columns):
 
     values = df.where(pd.notnull(df), None).values.tolist()
 
-    batch_size = 10000  # 한 번에 실행할 최대 행 수
+    batch_size = 50000  # 한 번에 실행할 최대 행 수
 
     chunk_index = 1
 
@@ -186,7 +186,7 @@ def process_in_batches(table, columns, pk_columns):
 # Define the DAG
 with DAG(
     dag_id="dag_CDC_ODS_SUB_ALLI_01",
-    schedule_interval='0 1 * * *',
+    schedule_interval='40 1 * * *',
     start_date=pendulum.datetime(2025, 3, 10, tz="Asia/Seoul"),
     catchup=False,  # 과거 데이터 실행 스킵
     tags=["현대홈쇼핑","DD01_0010_DAILY_MAIN","Scheduled"]

@@ -6,6 +6,9 @@ from airflow.models import Variable
 import pandas as pd
 import requests
 import os
+import pendulum
+
+kst_tz = pendulum.timezone('Asia/Seoul')
 
 def make_api_body(dag_id, task_id, start_date, end_date, error_logs):
     api_body = {
@@ -14,7 +17,7 @@ def make_api_body(dag_id, task_id, start_date, end_date, error_logs):
         "imdtSendYn": "Y",
         "sendPrrgDtm": "",
         "msgTitl": f"{task_id} failed",
-        "txtCntn": f"""MWAA 알림 API 테스트입니다
+        "txtCntn": f"""
         [DAG ID]: {dag_id}
         [Task ID]: {task_id}
         [Start Time]: {start_date}
@@ -33,8 +36,9 @@ def notify_api_on_error(context):
 
     task_id = task_instance.task_id
 
-    start_date = task_instance.start_date.strftime('%Y-%m-%d %H:%M:%S')
-    end_date = task_instance.end_date .strftime('%Y-%m-%d %H:%M:%S')
+    # pendulum 변환 후 KST로 맞추기
+    start_date = pendulum.instance(task_instance.start_date).in_tz(kst_tz).format('YYYY-MM-DD HH:mm:ss')
+    end_date = pendulum.instance(task_instance.end_date).in_tz(kst_tz).format('YYYY-MM-DD HH:mm:ss')
 
     error_log_url = context.get('task_instance').log_url
 
@@ -68,7 +72,7 @@ TMP_DIR = "/tmp/ods"
 S3_BUCKET_NAME = "hdhs-dw-mwaa-migdata"
 
 
-def oracle_conn_main_test(context):
+def oracle_conn_main_test(**kwargs):
     """
     Oracle DB에서 쿼리를 수행하고 결과를 XCom에 저장
     """

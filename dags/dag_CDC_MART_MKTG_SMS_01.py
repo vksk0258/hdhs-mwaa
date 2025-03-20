@@ -189,14 +189,6 @@ with DAG(
         ora_main_connection.close()
         print("커넥션 종료")
 
-        task_name = kwargs['ti'].task_id[5:]
-        type = "daily"
-        schema_name = ora_schema
-        table_name = ora_table_name
-        mwaa_cnt = len(df)
-        mwaa_st = pendulum.now(KST)
-        reverse_verfi(task_name, type, schema_name, table_name, mwaa_cnt, mwaa_st)
-
 
     # task_SP_CU_MKTG_AGR_SMS_SND_P = PythonOperator(
     #     task_id="task_SP_CU_MKTG_AGR_SMS_SND_P",

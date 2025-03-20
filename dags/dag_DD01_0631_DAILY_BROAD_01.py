@@ -22,7 +22,7 @@ def snow_chg_wh(wh_size):
 
 with DAG(
     dag_id="dag_DD01_0631_DAILY_BROAD_01",
-    schedule_interval='15 7 * * *',
+    schedule_interval='10 7 * * *',
     start_date=pendulum.datetime(2025, 2, 20, tz="Asia/Seoul"),
     dagrun_timeout=timedelta(minutes=4000),
     catchup=False,
