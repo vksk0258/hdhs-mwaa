@@ -5,6 +5,7 @@ from airflow.providers.oracle.hooks.oracle import OracleHook
 from common.common_call_procedure import execute_procedure, execute_procedure_dycl, log_etl_completion
 from common.notify_error_functions import notify_api_on_error
 from airflow.decorators import task
+from decimal import Decimal
 import pandas as pd
 import boto3
 import json
@@ -36,57 +37,29 @@ AND DATEADD(DAY, 1, TO_TIMESTAMP('{p_end}' || '235959', 'YYYYMMDDHH24MISS'))
 snow_conn_id = 'conn_snowflake_etl'
 ora_main_conn_id = 'conn_oracle_main'
 
-def reverse_verfi(task_name, type, schema_name, table_name, mwaa_cnt, mwaa_st):
-    ora_main_hook = OracleHook(oracle_conn_id='conn_oracle_H2O', thick_mode=True, thick_mode_lib_dir=client_path)
+def execute_procedure_main(procedure_name, p_start, p_end, conn_id, **kwargs):
+    """
+    Executes a stored procedure in Oracle without expecting any result set.
+    """
+    ora_main_hook = OracleHook(oracle_conn_id=conn_id, thick_mode=True, thick_mode_lib_dir=client_path)
 
-    if task_name == 'CU_CUST_MKTG_AGR_MST_TO_HDHS':
-        task_name = 'CU_CUST_MKTG_MST_TO_HDHS'
+    ti = kwargs['task_instance']
+    state = ti.state
+    ti.xcom_push(key='task_status', value=state)
 
-    with ora_main_hook.get_conn() as ora_connection:
-        select_query = f"""
-        SELECT SUCCESSFUL_ROWS, ACTUAL_START
-        FROM INFA.REP_SESS_LOG
-        WHERE SESSION_INSTANCE_NAME LIKE '%{task_name}%'
-        ORDER BY SESSION_TIMESTAMP DESC
-        FETCH FIRST 1 ROW ONLY
-        """
-        infa_df = pd.read_sql(select_query, ora_connection)
-
-    if infa_df.empty:
-        raise ValueError(f"No data found for task_name: {task_name}")
-
-    infa_cnt = infa_df['SUCCESSFUL_ROWS'].iloc[0]
-    infa_start_time = infa_df['ACTUAL_START'].iloc[0]
-    infa_start_time_str = infa_start_time.strftime('%Y-%m-%d %H:%M:%S')
-
-    snow_hook = SnowflakeHook(snowflake_conn_id=snow_conn_id)
-    with snow_hook.get_conn() as snow_connection:
-        with snow_connection.cursor() as snow_cursor:
-            ist_query = f"""
-            INSERT INTO DW_ETC.REVERSE_BATCH_VERIFI (
-            VERIFY_DATE, 
-            TYPE, 
-            SCHEMA_NAME, 
-            TABLE_NAME, 
-            INFA_CNT, 
-            MWAA_CNT, 
-            INFA_MINUS_MWAA_CNT, 
-            INFA_START_TIME, 
-            MWAA_START_TIME)
-            VALUES (
-            '{mwaa_st.strftime('%Y-%m-%d %H:%M:%S')}',
-            '{type}',
-            '{schema_name}',
-            '{table_name}',
-            {infa_cnt},
-            {mwaa_cnt},
-            {infa_cnt - mwaa_cnt},
-            '{infa_start_time_str}',
-            '{mwaa_st.strftime('%Y-%m-%d %H:%M:%S')}'
-            )
+    with ora_main_hook.get_conn() as conn:
+        with conn.cursor() as cur:
+            query = f"""
+            DECLARE
+                P_RET VARCHAR(8);
+            BEGIN
+                {procedure_name}('{p_start}', '{p_end}', P_RET);
+            END;
             """
-            print(ist_query)
-            snow_cursor.execute(ist_query)
+            print(query)
+            cur.execute(query)
+            # Do not fetch rows; instead, handle procedure logic
+            print(f"Procedure executed: {procedure_name} for date range {p_start} to {p_end}")
 
 
 with DAG(
@@ -105,7 +78,8 @@ with DAG(
 
 
     @task(task_id='task_CU_MKTG_AGR_SMS_DTL_TO_HDHS', provide_context=True,
-          trigger_rule="all_done")
+          trigger_rule="all_done",
+          on_failure_callback=notify_api_on_error)
     def task_CU_MKTG_AGR_SMS_DTL_TO_HDHS(**kwargs):
 
         snow_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_insu')
@@ -148,57 +122,71 @@ with DAG(
 
             ora_schema, ora_table_name = ora_main_table.split('.')
 
-            truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
-            print("==================[TRUNCATE QEURY]==================")
-            print(truncate_query)
-            ora_main_cursor.execute(truncate_query)
-
             # 숫자형 컬럼 변환 (NaN을 None으로 변환)
             for col in df_tf.select_dtypes(include=['number']).columns:
                 df_tf[col] = df_tf[col].astype(float).where(df_tf[col].notnull(), None)
 
+            for col in df.select_dtypes(include=['number']).columns:
+                df_tf[col] = df_tf[col].apply(lambda x: Decimal(str(x)) if pd.notnull(x) else None)
+
             # 날짜 컬럼 유지 및 변환하지 않음
             date_columns = df_tf.select_dtypes(include=['datetime', 'datetimetz']).columns
 
-            # Insert Query 수정
-            insert_query = f"""
-                                    INSERT INTO {ora_main_table} ({", ".join(columns)})
-                                    VALUES ({", ".join([f"TO_TIMESTAMP(:{i + 1}, 'YYYY-MM-DD HH24:MI:SS')" if col in date_columns else f":{i + 1}" for i, col in enumerate(columns)])})
-                                """
+            # MERGE Query 생성
+            set_clause = ", ".join([
+                f"{col} = :{i + 1}"
+                for i, col in enumerate(columns) if col not in pk_columns
+            ])
 
-            # executemany 실행 전에 데이터 타입 변환 (날짜 컬럼만 문자열로 변환)
+            insert_values = ", ".join([
+                f":{i + 1}"
+                for i, col in enumerate(columns)
+            ])
+
+            on_clause = " AND ".join([f"target.{col} = source.{col}" for col in pk_columns])
+
+            merge_query = f"""
+                            MERGE INTO {ora_main_table} target
+                            USING (SELECT {', '.join([':' + str(i + 1) + ' AS ' + col for i, col in enumerate(columns)])} FROM DUAL) source
+                            ON ({on_clause})
+                            WHEN MATCHED THEN
+                                UPDATE SET {set_clause}
+                            WHEN NOT MATCHED THEN
+                                INSERT ({', '.join(columns)})
+                                VALUES ({insert_values})
+                        """
+
+            # 올바른 처리 - datetime 그대로 넘김
             df_tf = df_tf.apply(lambda row: [
-                row[col].strftime('%Y-%m-%d %H:%M:%S') if col in date_columns and pd.notnull(row[col]) else row[col] for
-                col in columns], axis=1).tolist()
+                row[col].to_pydatetime() if col in date_columns and pd.notnull(row[col]) else row[col]
+                for col in columns
+            ], axis=1).tolist()
 
-            print("==================[INSERT QEURY]==================")
-            print(insert_query)
+            print("==================[MERRGE QUERY]==================")
+            print(merge_query)
 
-            # BATCH INSERT 수행
+            # BATCH MERGE 수행
             batch_size = 10000
             for i in range(0, len(df_tf), batch_size):
                 batch = df_tf[i: i + batch_size]
-                ora_main_cursor.executemany(insert_query, batch)
+                ora_main_cursor.executemany(merge_query, batch)
                 ora_main_connection.commit()
-                print(f"총{len(df)}건 중 {i + 10000}건 커밋 완료")
 
-            ora_main_cursor.execute(f"SELECT COUNT(*) FROM {ora_main_table}")
-            print("######TMP에 들어간 건수######")
-            print(ora_main_cursor.fetchone())
+                print(f"총{len(df_tf)}건 중 {i + 10000}건 커밋 완료")
 
         ora_main_connection.close()
         print("커넥션 종료")
 
 
-    # task_SP_CU_MKTG_AGR_SMS_SND_P = PythonOperator(
-    #     task_id="task_SP_CU_MKTG_AGR_SMS_SND_P",
-    #     python_callable=execute_procedure_dycl,
-    #     op_args=["SP_CU_MKTG_AGR_SMS_SND_P", p_start, p_end, 'conn_snowflake_insu'],
-    #     trigger_rule="all_done",
-    #     provide_context=True,
-    #     on_failure_callback=notify_api_on_error
-    # )
+    task_SP_CU_MKTG_AGR_SMS_SND_P = PythonOperator(
+        task_id="task_SP_CU_MKTG_AGR_SMS_SND_P",
+        python_callable=execute_procedure_main,
+        op_args=["HDHS_CU.CU_MKTG_AGR_SMS_SND_P", p_start, p_end, ora_main_conn_id],
+        trigger_rule="all_done",
+        provide_context=True,
+        # on_failure_callback=notify_api_on_error
+    )
 
     task_CU_MKTG_AGR_SMS_DTL_TO_HDHS = task_CU_MKTG_AGR_SMS_DTL_TO_HDHS()
 
-    task_SP_BMK_CUST_MKTG_AGR_HIS >> task_CU_MKTG_AGR_SMS_DTL_TO_HDHS
+    task_SP_BMK_CUST_MKTG_AGR_HIS >> task_CU_MKTG_AGR_SMS_DTL_TO_HDHS >> task_SP_CU_MKTG_AGR_SMS_SND_P

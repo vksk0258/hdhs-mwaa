@@ -6,6 +6,7 @@ apache-airflow-providers-snowflake
 apache-airflow-providers-jdbc
 apache-airflow-providers-odbc
 apache-airflow-providers-microsoft-mssql
+apache-airflow-providers-sftp
 boto3
 pandas
 chardet

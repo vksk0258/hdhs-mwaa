@@ -7,7 +7,7 @@ from airflow.operators.bash import BashOperator
 
 with DAG(
     dag_id="dag_chg_env_medium_daily",
-    schedule='50 4 * * *',
+    schedule='20 5 * * *',
     start_date=pendulum.datetime(2025, 3, 19, tz="Asia/Seoul"),
     catchup=False,
     dagrun_timeout=datetime.timedelta(minutes=60),

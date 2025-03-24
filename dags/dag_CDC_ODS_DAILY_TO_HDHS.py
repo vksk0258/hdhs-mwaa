@@ -309,8 +309,8 @@ with DAG(
 
     task_CU_CUST_MKTG_AGR_MST_TO_HDHS = PythonOperator(
         task_id="task_CU_CUST_MKTG_AGR_MST_TO_HDHS",
-        python_callable=snow_to_snow_merge,
-        op_args=[snow_conn_id,
+        python_callable=snow_to_snow_merge2,
+        op_args=['conn_snowflake_insu',
                  ora_main_conn_id,
                  var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['SNOW_TABLE'],
                  var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['ORA_MAIN_TABLE'],
@@ -324,7 +324,7 @@ with DAG(
 
     task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS = PythonOperator(
         task_id="task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=['conn_snowflake_insu',
                  ora_main_conn_id,
                  var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['SNOW_TABLE'],
@@ -339,7 +339,7 @@ with DAG(
 
     task_BCU_CUST_TNDC_INF_TO_HDHS = PythonOperator(
         task_id="task_BCU_CUST_TNDC_INF_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id,
                  ora_main_conn_id,
                  var_dict['task_BCU_CUST_TNDC_INF_TO_HDHS']['SNOW_TABLE'],
@@ -354,7 +354,7 @@ with DAG(
 
     task_HES_RNTL_ARLT_DTL_TO_HDHS = PythonOperator(
         task_id="task_HES_RNTL_ARLT_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id,
                  ora_main_conn_id,
                  var_dict['task_HES_RNTL_ARLT_DTL_TO_HDHS']['SNOW_TABLE'],

@@ -422,6 +422,9 @@ def task_DWCT_DAGENT_c_01 (table, dagent_columns, dagent_primary_keys):
     # NaN 값을 명확하게 None으로 변환
     df.replace({np.nan: None}, inplace=True)
 
+    # LOGID 컬럼에서 공백 제거
+    df['logid'] = df['logid'].str.replace(' ', '')
+
     values = df.where(pd.notnull(df), None).values.tolist()
 
     batch_size = 50000  # 한 번에 실행할 최대 행 수

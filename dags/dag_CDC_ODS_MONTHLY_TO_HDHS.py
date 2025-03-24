@@ -5,6 +5,7 @@ from airflow.providers.oracle.hooks.oracle import OracleHook
 from airflow.operators.python import PythonOperator
 from common.notify_error_functions import notify_api_on_error
 from airflow.decorators import task
+from decimal import Decimal
 from datetime import datetime, timedelta
 import boto3
 import json
@@ -30,7 +31,88 @@ params = json.load(response['Body'])
 p_start = params.get("$$P_START")
 p_end = params.get("$$P_END")
 
-def snow_to_snow_merge(snow_conn_id, ora_main_conn_id, snow_table, ora_main_table, columns, pk_columns, condition_query):
+def snow_to_snow_merge2(snow_conn_id, ora_main_conn_id, snow_table, ora_main_table, columns, pk_columns, condition_query,**kwargs):
+    """
+    특정 테이블 데이터를 처리하고 Snowflake에 MERGE 합니다.
+    """
+
+    snow_hook = SnowflakeHook(snowflake_conn_id=snow_conn_id)
+    ora_main_hook = OracleHook(oracle_conn_id=ora_main_conn_id, thick_mode=True, thick_mode_lib_dir=client_path)
+    ora_main_connection = ora_main_hook.get_conn()
+
+    with snow_hook.get_conn() as snow_connection:
+        with ora_main_connection.cursor() as ora_main_cursor:
+
+            query = f"""
+                        SELECT {', '.join(columns)}
+                        FROM {snow_table}
+                     """ + condition_query
+
+            print("==================[ORACLE QUERY]==================")
+            print(query)
+            df = pd.read_sql(query, snow_connection)
+            print(f"## {snow_table} 조회 카운트 : {len(df)}")
+            print(str(df.head(1)))
+
+            # 숫자형 컬럼 변환 (NaN을 None으로 변환)
+            for col in df.select_dtypes(include=['number']).columns:
+                df[col] = df[col].astype(float).where(df[col].notnull(), None)
+
+            for col in df.select_dtypes(include=['number']).columns:
+                df[col] = df[col].apply(lambda x: Decimal(str(x)) if pd.notnull(x) else None)
+
+            # 날짜 컬럼 유지 및 변환하지 않음
+            date_columns = df.select_dtypes(include=['datetime', 'datetimetz']).columns
+
+            # MERGE Query 생성
+            set_clause = ", ".join([
+                f"{col} = :{i + 1}"
+                for i, col in enumerate(columns) if col not in pk_columns
+            ])
+
+            insert_values = ", ".join([
+                f":{i + 1}"
+                for i, col in enumerate(columns)
+            ])
+
+            on_clause = " AND ".join([f"target.{col} = source.{col}" for col in pk_columns])
+
+            merge_query = f"""
+                MERGE INTO {ora_main_table} target
+                USING (SELECT {', '.join([':' + str(i + 1) + ' AS ' + col for i, col in enumerate(columns)])} FROM DUAL) source
+                ON ({on_clause})
+                WHEN MATCHED THEN
+                    UPDATE SET {set_clause}
+                WHEN NOT MATCHED THEN
+                    INSERT ({', '.join(columns)})
+                    VALUES ({insert_values})
+            """
+
+            # 올바른 처리 - datetime 그대로 넘김
+            df = df.apply(lambda row: [
+                row[col].to_pydatetime() if col in date_columns and pd.notnull(row[col]) else row[col]
+                for col in columns
+            ], axis=1).tolist()
+
+            print("==================[MERRGE QUERY]==================")
+            print(merge_query)
+
+            # BATCH MERGE 수행
+            batch_size = 10000
+            for i in range(0, len(df), batch_size):
+                batch = df[i: i + batch_size]
+                ora_main_cursor.executemany(merge_query, batch)
+                ora_main_connection.commit()
+
+
+                print(f"총{len(df)}건 중 {i+10000}건 커밋 완료")
+
+    ora_main_connection.close()
+    print("커넥션 종료")
+
+
+
+def snow_to_snow_merge(snow_conn_id, ora_main_conn_id, snow_table, ora_main_table, columns, pk_columns, condition_query, **kwargs):
     """
     특정 테이블 데이터를 처리하고 Snowflake에 MERGE 합니다.
     """
@@ -60,11 +142,14 @@ def snow_to_snow_merge(snow_conn_id, ora_main_conn_id, snow_table, ora_main_tabl
             print(query)
             df = pd.read_sql(query, snow_connection)
             print(f"## {snow_table} 조회 카운트 : {len(df)}")
-            print(df.head(1))
+            print(str(df.head(1)))
 
             # 숫자형 컬럼 변환 (NaN을 None으로 변환)
             for col in df.select_dtypes(include=['number']).columns:
                 df[col] = df[col].astype(float).where(df[col].notnull(), None)
+
+            for col in df.select_dtypes(include=['number']).columns:
+                df[col] = df[col].apply(lambda x: Decimal(str(x)) if pd.notnull(x) else None)
 
             # 날짜 컬럼 유지 및 변환하지 않음
             date_columns = df.select_dtypes(include=['datetime', 'datetimetz']).columns
@@ -89,7 +174,7 @@ def snow_to_snow_merge(snow_conn_id, ora_main_conn_id, snow_table, ora_main_tabl
                 batch = df[i: i + batch_size]
                 ora_main_cursor.executemany(insert_query, batch)
                 ora_main_connection.commit()
-                print(f"총{len(df)}건 중 {i + 10000}건 커밋 완료")
+                print(f"총{len(df)}건 중 {i+10000}건 커밋 완료")
 
             ora_main_cursor.execute(f"SELECT COUNT(*) FROM {ora_main_table}")
             print("######TMP에 들어간 건수######")
@@ -158,7 +243,7 @@ with DAG(
 
     task_CU_TCS_CUST_HIS_TO_HDHS = PythonOperator(
         task_id="task_CU_TCS_CUST_HIS_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_CU_TCS_CUST_HIS_TO_HDHS']['SNOW_TABLE'],
                  var_dict['task_CU_TCS_CUST_HIS_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_CU_TCS_CUST_HIS_TO_HDHS']['COLUMNS'], var_dict['task_CU_TCS_CUST_HIS_TO_HDHS']['PK_COLUMNS'],
@@ -171,7 +256,7 @@ with DAG(
 
     task_IM_VEN_CNTB_RATE_SMR_TO_HDHS = PythonOperator(
         task_id="task_IM_VEN_CNTB_RATE_SMR_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_IM_VEN_CNTB_RATE_SMR_TO_HDHS']['SNOW_TABLE'],
                  var_dict['task_IM_VEN_CNTB_RATE_SMR_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_IM_VEN_CNTB_RATE_SMR_TO_HDHS']['COLUMNS'], var_dict['task_IM_VEN_CNTB_RATE_SMR_TO_HDHS']['PK_COLUMNS'],
@@ -184,7 +269,7 @@ with DAG(
 
     task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS = PythonOperator(
         task_id="task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS']['SNOW_TABLE'],
                  var_dict['task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS']['COLUMNS'], var_dict['task_MK_AVG_WINT_INSM_CMIS_RATE_TO_HDHS']['PK_COLUMNS'],
@@ -197,7 +282,7 @@ with DAG(
 
     task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS = PythonOperator(
         task_id="task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS']['SNOW_TABLE'],
                  var_dict['task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS']['COLUMNS'], var_dict['task_MK_AVG_WINT_INSM_CMIS_ETC_RATE_TO_HDHS']['PK_COLUMNS'],
@@ -210,7 +295,7 @@ with DAG(
 
     task_HES_BRND_CTPF_RATE_DTL_TO_HDHS = PythonOperator(
         task_id="task_HES_BRND_CTPF_RATE_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_HES_BRND_CTPF_RATE_DTL_TO_HDHS']['SNOW_TABLE'],
                  var_dict['task_HES_BRND_CTPF_RATE_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_HES_BRND_CTPF_RATE_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_BRND_CTPF_RATE_DTL_TO_HDHS']['PK_COLUMNS'],
@@ -222,7 +307,7 @@ with DAG(
 
     task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS = PythonOperator(
         task_id="task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS']['SNOW_TABLE'],
                  var_dict['task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_BRND_CTPF_RATE_ETC_DTL_TO_HDHS']['PK_COLUMNS'],
@@ -234,7 +319,7 @@ with DAG(
 
     task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS = PythonOperator(
         task_id="task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS']['SNOW_TABLE'],
                  var_dict['task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS']['COLUMNS'], var_dict['task_HES_DRCT_PRCH_LOSS_DTL_TO_HDHS']['PK_COLUMNS'],
@@ -246,7 +331,7 @@ with DAG(
 
     task_RAR_CTPF_RATE_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_CTPF_RATE_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_RAR_CTPF_RATE_DTL_TO_HDHS']['SNOW_TABLE'],
                  var_dict['task_RAR_CTPF_RATE_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_RAR_CTPF_RATE_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_CTPF_RATE_DTL_TO_HDHS']['PK_COLUMNS'],
@@ -258,7 +343,7 @@ with DAG(
 
     task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS']['SNOW_TABLE'],
                  var_dict['task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_CTPF_RATE_ETC_DTL_TO_HDHS']['PK_COLUMNS'],
@@ -270,7 +355,7 @@ with DAG(
 
     task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS = PythonOperator(
         task_id="task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge,
+        python_callable=snow_to_snow_merge2,
         op_args=[snow_conn_id, ora_main_conn_id, var_dict['task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS']['SNOW_TABLE'],
                  var_dict['task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
                  var_dict['task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS']['COLUMNS'], var_dict['task_RAR_CTPF_RATE_HMALL_DTL_TO_HDHS']['PK_COLUMNS'],
@@ -316,43 +401,62 @@ with DAG(
         with ora_main_connection.cursor() as ora_main_cursor:
             ora_schema, ora_table_name = ora_main_table.split('.')
 
-            truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
-            print("==================[TRUNCATE QEURY]==================")
-            print(truncate_query)
-            ora_main_cursor.execute(truncate_query)
+            # truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
+            # print("==================[TRUNCATE QEURY]==================")
+            # print(truncate_query)
+            # ora_main_cursor.execute(truncate_query)
 
             # 숫자형 컬럼 변환 (NaN을 None으로 변환)
             for col in df_tf.select_dtypes(include=['number']).columns:
                 df_tf[col] = df_tf[col].astype(float).where(df_tf[col].notnull(), None)
 
+            for col in df_tf.select_dtypes(include=['number']).columns:
+                df_tf[col] = df_tf[col].apply(lambda x: Decimal(str(x)) if pd.notnull(x) else None)
+
             # 날짜 컬럼 유지 및 변환하지 않음
             date_columns = df_tf.select_dtypes(include=['datetime', 'datetimetz']).columns
 
-            # Insert Query 수정
-            insert_query = f"""
-                                INSERT INTO {ora_main_table} ({", ".join(columns)})
-                                VALUES ({", ".join([f"TO_TIMESTAMP(:{i + 1}, 'YYYY-MM-DD HH24:MI:SS')" if col in date_columns else f":{i + 1}" for i, col in enumerate(columns)])})
-                            """
+            # MERGE Query 생성
+            set_clause = ", ".join([
+                f"{col} = :{i + 1}"
+                for i, col in enumerate(columns) if col not in pk_columns
+            ])
 
-            # executemany 실행 전에 데이터 타입 변환 (날짜 컬럼만 문자열로 변환)
+            insert_values = ", ".join([
+                f":{i + 1}"
+                for i, col in enumerate(columns)
+            ])
+
+            on_clause = " AND ".join([f"target.{col} = source.{col}" for col in pk_columns])
+
+            merge_query = f"""
+                            MERGE INTO {ora_main_table} target
+                            USING (SELECT {', '.join([':' + str(i + 1) + ' AS ' + col for i, col in enumerate(columns)])} FROM DUAL) source
+                            ON ({on_clause})
+                            WHEN MATCHED THEN
+                                UPDATE SET {set_clause}
+                            WHEN NOT MATCHED THEN
+                                INSERT ({', '.join(columns)})
+                                VALUES ({insert_values})
+                        """
+
+            # 올바른 처리 - datetime 그대로 넘김
             df_tf = df_tf.apply(lambda row: [
-                row[col].strftime('%Y-%m-%d %H:%M:%S') if col in date_columns and pd.notnull(row[col]) else row[col] for
-                col in columns], axis=1).tolist()
+                row[col].to_pydatetime() if col in date_columns and pd.notnull(row[col]) else row[col]
+                for col in columns
+            ], axis=1).tolist()
 
-            print("==================[INSERT QEURY]==================")
-            print(insert_query)
+            print("==================[MERRGE QUERY]==================")
+            print(merge_query)
 
-            # BATCH INSERT 수행
+            # BATCH MERGE 수행
             batch_size = 10000
             for i in range(0, len(df_tf), batch_size):
                 batch = df_tf[i: i + batch_size]
-                ora_main_cursor.executemany(insert_query, batch)
+                ora_main_cursor.executemany(merge_query, batch)
                 ora_main_connection.commit()
-                print(f"총{len(df)}건 중 {i + 10000}건 커밋 완료")
 
-            ora_main_cursor.execute(f"SELECT COUNT(*) FROM {ora_main_table}")
-            print("######TMP에 들어간 건수######")
-            print(ora_main_cursor.fetchone())
+                print(f"총{len(df_tf)}건 중 {i + 10000}건 커밋 완료")
 
         ora_main_connection.close()
         print("커넥션 종료")
@@ -434,44 +538,62 @@ with DAG(
         with ora_main_connection.cursor() as ora_main_cursor:
             ora_schema, ora_table_name = ora_main_table.split('.')
 
-            truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
-            print("==================[TRUNCATE QEURY]==================")
-            print(truncate_query)
-            ora_main_cursor.execute(truncate_query)
+            # truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
+            # print("==================[TRUNCATE QEURY]==================")
+            # print(truncate_query)
+            # ora_main_cursor.execute(truncate_query)
 
             # 숫자형 컬럼 변환 (NaN을 None으로 변환)
             for col in df_tf.select_dtypes(include=['number']).columns:
                 df_tf[col] = df_tf[col].astype(float).where(df_tf[col].notnull(), None)
 
+            for col in df_tf.select_dtypes(include=['number']).columns:
+                df_tf[col] = df_tf[col].apply(lambda x: Decimal(str(x)) if pd.notnull(x) else None)
+
             # 날짜 컬럼 유지 및 변환하지 않음
             date_columns = df_tf.select_dtypes(include=['datetime', 'datetimetz']).columns
 
-            # Insert Query 수정
-            insert_query = f"""
-                                INSERT INTO {ora_main_table} ({", ".join(columns)})
-                                VALUES ({", ".join([f"TO_TIMESTAMP(:{i + 1}, 'YYYY-MM-DD HH24:MI:SS')" if col in date_columns else f":{i + 1}" for i, col in enumerate(columns)])})
-                            """
+            # MERGE Query 생성
+            set_clause = ", ".join([
+                f"{col} = :{i + 1}"
+                for i, col in enumerate(columns) if col not in pk_columns
+            ])
 
-            # executemany 실행 전에 데이터 타입 변환 (날짜 컬럼만 문자열로 변환)
+            insert_values = ", ".join([
+                f":{i + 1}"
+                for i, col in enumerate(columns)
+            ])
+
+            on_clause = " AND ".join([f"target.{col} = source.{col}" for col in pk_columns])
+
+            merge_query = f"""
+                            MERGE INTO {ora_main_table} target
+                            USING (SELECT {', '.join([':' + str(i + 1) + ' AS ' + col for i, col in enumerate(columns)])} FROM DUAL) source
+                            ON ({on_clause})
+                            WHEN MATCHED THEN
+                                UPDATE SET {set_clause}
+                            WHEN NOT MATCHED THEN
+                                INSERT ({', '.join(columns)})
+                                VALUES ({insert_values})
+                        """
+
+            # 올바른 처리 - datetime 그대로 넘김
             df_tf = df_tf.apply(lambda row: [
-                row[col].strftime('%Y-%m-%d %H:%M:%S') if col in date_columns and pd.notnull(row[col]) else row[col]
-                for
-                col in columns], axis=1).tolist()
+                row[col].to_pydatetime() if col in date_columns and pd.notnull(row[col]) else row[col]
+                for col in columns
+            ], axis=1).tolist()
 
-            print("==================[INSERT QEURY]==================")
-            print(insert_query)
+            print("==================[MERRGE QUERY]==================")
+            print(merge_query)
 
-            # BATCH INSERT 수행
+            # BATCH MERGE 수행
             batch_size = 10000
             for i in range(0, len(df_tf), batch_size):
                 batch = df_tf[i: i + batch_size]
-                ora_main_cursor.executemany(insert_query, batch)
+                ora_main_cursor.executemany(merge_query, batch)
                 ora_main_connection.commit()
-                print(f"총{len(df)}건 중 {i + 10000}건 커밋 완료")
 
-            ora_main_cursor.execute(f"SELECT COUNT(*) FROM {ora_main_table}")
-            print("######TMP에 들어간 건수######")
-            print(ora_main_cursor.fetchone())
+                print(f"총{len(df_tf)}건 중 {i + 10000}건 커밋 완료")
 
         ora_main_connection.close()
         print("커넥션 종료")
@@ -528,43 +650,62 @@ with DAG(
         with ora_main_connection.cursor() as ora_main_cursor:
             ora_schema, ora_table_name = ora_main_table.split('.')
 
-            truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
-            print("==================[TRUNCATE QEURY]==================")
-            print(truncate_query)
-            ora_main_cursor.execute(truncate_query)
+            # truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
+            # print("==================[TRUNCATE QEURY]==================")
+            # print(truncate_query)
+            # ora_main_cursor.execute(truncate_query)
 
             # 숫자형 컬럼 변환 (NaN을 None으로 변환)
             for col in df_tf.select_dtypes(include=['number']).columns:
                 df_tf[col] = df_tf[col].astype(float).where(df_tf[col].notnull(), None)
 
+            for col in df_tf.select_dtypes(include=['number']).columns:
+                df_tf[col] = df_tf[col].apply(lambda x: Decimal(str(x)) if pd.notnull(x) else None)
+
             # 날짜 컬럼 유지 및 변환하지 않음
             date_columns = df_tf.select_dtypes(include=['datetime', 'datetimetz']).columns
 
-            # Insert Query 수정
-            insert_query = f"""
-                                INSERT INTO {ora_main_table} ({", ".join(columns)})
-                                VALUES ({", ".join([f"TO_TIMESTAMP(:{i + 1}, 'YYYY-MM-DD HH24:MI:SS')" if col in date_columns else f":{i + 1}" for i, col in enumerate(columns)])})
-                            """
+            # MERGE Query 생성
+            set_clause = ", ".join([
+                f"{col} = :{i + 1}"
+                for i, col in enumerate(columns) if col not in pk_columns
+            ])
 
-            # executemany 실행 전에 데이터 타입 변환 (날짜 컬럼만 문자열로 변환)
+            insert_values = ", ".join([
+                f":{i + 1}"
+                for i, col in enumerate(columns)
+            ])
+
+            on_clause = " AND ".join([f"target.{col} = source.{col}" for col in pk_columns])
+
+            merge_query = f"""
+                            MERGE INTO {ora_main_table} target
+                            USING (SELECT {', '.join([':' + str(i + 1) + ' AS ' + col for i, col in enumerate(columns)])} FROM DUAL) source
+                            ON ({on_clause})
+                            WHEN MATCHED THEN
+                                UPDATE SET {set_clause}
+                            WHEN NOT MATCHED THEN
+                                INSERT ({', '.join(columns)})
+                                VALUES ({insert_values})
+                        """
+
+            # 올바른 처리 - datetime 그대로 넘김
             df_tf = df_tf.apply(lambda row: [
-                    row[col].strftime('%Y-%m-%d %H:%M:%S') if col in date_columns and pd.notnull(row[col]) else row[col] for
-                col in columns], axis=1).tolist()
+                row[col].to_pydatetime() if col in date_columns and pd.notnull(row[col]) else row[col]
+                for col in columns
+            ], axis=1).tolist()
 
-            print("==================[INSERT QEURY]==================")
-            print(insert_query)
+            print("==================[MERRGE QUERY]==================")
+            print(merge_query)
 
-            # BATCH INSERT 수행
+            # BATCH MERGE 수행
             batch_size = 10000
             for i in range(0, len(df_tf), batch_size):
                 batch = df_tf[i: i + batch_size]
-                ora_main_cursor.executemany(insert_query, batch)
+                ora_main_cursor.executemany(merge_query, batch)
                 ora_main_connection.commit()
-                print(f"총{len(df)}건 중 {i + 10000}건 커밋 완료")
 
-            ora_main_cursor.execute(f"SELECT COUNT(*) FROM {ora_main_table}")
-            print("######TMP에 들어간 건수######")
-            print(ora_main_cursor.fetchone())
+                print(f"총{len(df_tf)}건 중 {i + 10000}건 커밋 완료")
 
         ora_main_connection.close()
         print("커넥션 종료")

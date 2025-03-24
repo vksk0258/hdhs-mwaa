@@ -1,10 +1,10 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from common.common_call_procedure import execute_procedure, execute_procedure_dycl, log_etl_completion
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.providers.oracle.hooks.oracle import OracleHook
 import pandas as pd
 import boto3
+from decimal import Decimal
 from airflow.models import Variable
 from common.notify_error_functions import notify_api_on_error
 from airflow.decorators import task
@@ -33,57 +33,54 @@ p_end = params.get('$$P_END')
 snow_conn_id = 'conn_snowflake_etl'
 ora_main_conn_id = 'conn_oracle_main'
 
-def reverse_verfi(task_name, type, schema_name, table_name, mwaa_cnt, mwaa_st):
-    ora_main_hook = OracleHook(oracle_conn_id='conn_oracle_H2O', thick_mode=True, thick_mode_lib_dir=client_path)
+def execute_procedure_trnc(procedure_name, p_start, p_end, conn_id, **kwargs):
+    """
+    Executes a stored procedure in Oracle without expecting any result set.
+    """
+    ora_main_hook = OracleHook(oracle_conn_id=conn_id, thick_mode=True, thick_mode_lib_dir=client_path)
 
-    if task_name == 'CU_CUST_MKTG_AGR_MST_TO_HDHS':
-        task_name = 'CU_CUST_MKTG_MST_TO_HDHS'
+    ti = kwargs['task_instance']
+    state = ti.state
+    ti.xcom_push(key='task_status', value=state)
 
-    with ora_main_hook.get_conn() as ora_connection:
-        select_query = f"""
-        SELECT SUCCESSFUL_ROWS, ACTUAL_START
-        FROM INFA.REP_SESS_LOG
-        WHERE SESSION_INSTANCE_NAME LIKE '%{task_name}%'
-        ORDER BY SESSION_TIMESTAMP DESC
-        FETCH FIRST 1 ROW ONLY
-        """
-        infa_df = pd.read_sql(select_query, ora_connection)
-
-    if infa_df.empty:
-        raise ValueError(f"No data found for task_name: {task_name}")
-
-    infa_cnt = infa_df['SUCCESSFUL_ROWS'].iloc[0]
-    infa_start_time = infa_df['ACTUAL_START'].iloc[0]
-    infa_start_time_str = infa_start_time.strftime('%Y-%m-%d %H:%M:%S')
-
-    snow_hook = SnowflakeHook(snowflake_conn_id=snow_conn_id)
-    with snow_hook.get_conn() as snow_connection:
-        with snow_connection.cursor() as snow_cursor:
-            ist_query = f"""
-            INSERT INTO DW_ETC.REVERSE_BATCH_VERIFI (
-            VERIFY_DATE, 
-            TYPE, 
-            SCHEMA_NAME, 
-            TABLE_NAME, 
-            INFA_CNT, 
-            MWAA_CNT, 
-            INFA_MINUS_MWAA_CNT, 
-            INFA_START_TIME, 
-            MWAA_START_TIME)
-            VALUES (
-            '{mwaa_st.strftime('%Y-%m-%d %H:%M:%S')}',
-            '{type}',
-            '{schema_name}',
-            '{table_name}',
-            {infa_cnt},
-            {mwaa_cnt},
-            {infa_cnt - mwaa_cnt},
-            '{infa_start_time_str}',
-            '{mwaa_st.strftime('%Y-%m-%d %H:%M:%S')}'
-            )
+    with ora_main_hook.get_conn() as conn:
+        with conn.cursor() as cur:
+            query = f"""
+            DECLARE
+                P_RET VARCHAR(8);
+            BEGIN
+                {procedure_name}('{p_start}', '{p_end}', P_RET);
+            END;
             """
-            print(ist_query)
-            snow_cursor.execute(ist_query)
+            print(query)
+            cur.execute(query)
+            # Do not fetch rows; instead, handle procedure logic
+            print(f"Procedure executed: {procedure_name} for date range {p_start} to {p_end}")
+
+def execute_procedure_stat(procedure_name, p_start, conn_id, **kwargs):
+    """
+    Executes a stored procedure in Oracle without expecting any result set.
+    """
+    ora_main_hook = OracleHook(oracle_conn_id=conn_id, thick_mode=True, thick_mode_lib_dir=client_path)
+
+    ti = kwargs['task_instance']
+    state = ti.state
+    ti.xcom_push(key='task_status', value=state)
+
+    with ora_main_hook.get_conn() as conn:
+        with conn.cursor() as cur:
+            query = f"""
+            DECLARE
+                OUT_RESULT VARCHAR(100);
+            BEGIN
+                {procedure_name}('{p_start}', OUT_RESULT);
+            END;
+            """
+            print(query)
+            cur.execute(query)
+            # Do not fetch rows; instead, handle procedure logic
+            print(f"Procedure executed: {procedure_name} for date range {p_start} to {p_end}")
+
 
 
 def snow_to_snow_merge(snow_conn_id, ora_main_conn_id, snow_table, ora_main_table, columns, pk_columns, condition_query, **kwargs):
@@ -154,13 +151,6 @@ def snow_to_snow_merge(snow_conn_id, ora_main_conn_id, snow_table, ora_main_tabl
     ora_main_connection.close()
     print("커넥션 종료")
 
-    task_name = kwargs['ti'].task_id[5:]
-    type = "daily"
-    schema_name = ora_schema
-    table_name = ora_table_name
-    mwaa_cnt = len(df)
-    mwaa_st = pendulum.now(KST)
-    reverse_verfi(task_name, type, schema_name, table_name, mwaa_cnt, mwaa_st)
 
 task_CU_CUST_STAT_DTL_TO_HDHS_QUERY = f"""WHERE (ETL_DTM BETWEEN DATEADD(DAY, 1, TO_TIMESTAMP('{p_start}' || '000000', 'YYYYMMDDHH24MISS'))
 AND DATEADD(DAY, 1, TO_TIMESTAMP('{p_end}' || '235959', 'YYYYMMDDHH24MISS')))
@@ -180,14 +170,15 @@ with DAG(
 ) as dag:
     task_SP_TRUNCATE_FOR_DW = PythonOperator(
         task_id="task_SP_TRUNCATE_FOR_DW",
-        python_callable=execute_procedure,
-        op_args=["HDHS_NSTD.SP_TRUNCATE_FOR_DW", p_start, p_end,"conn_oracle_main"],
+        python_callable=execute_procedure_trnc,
+        op_args=["HDHS_NSTD.SP_TRUNCATE_FOR_DW", p_start, p_end,ora_main_conn_id],
         trigger_rule="all_done",
         provide_context=True,
         on_failure_callback=notify_api_on_error
     )
 
-    @task(task_id='task_CU_CUST_STAT_DTL_TO_HDHS', provide_context=True)
+    @task(task_id='task_CU_CUST_STAT_DTL_TO_HDHS', provide_context=True,trigger_rule="all_done",
+          on_failure_callback=notify_api_on_error)
     def task_CU_CUST_STAT_DTL_TO_HDHS(**kwargs):
         snow_hook = SnowflakeHook(snowflake_conn_id=snow_conn_id)
         ora_main_hook = OracleHook(oracle_conn_id=ora_main_conn_id, thick_mode=True, thick_mode_lib_dir=client_path,
@@ -249,11 +240,6 @@ with DAG(
 
             ora_schema, ora_table_name = ora_main_table.split('.')
 
-            truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
-            print("==================[TRUNCATE QEURY]==================")
-            print(truncate_query)
-            ora_main_cursor.execute(truncate_query)
-
             # 숫자형 컬럼 변환 (NaN을 None으로 변환)
             for col in df_tf.select_dtypes(include=['number']).columns:
                 df_tf[col] = df_tf[col].astype(float).where(df_tf[col].notnull(), None)
@@ -307,16 +293,10 @@ with DAG(
         ora_main_connection.close()
         print("커넥션 종료")
 
-        task_name = kwargs['ti'].task_id[5:]
-        type = "daily"
-        schema_name = ora_schema
-        table_name = ora_table_name
-        mwaa_cnt = len(df)
-        mwaa_st = pendulum.now(KST)
-        reverse_verfi(task_name, type, schema_name, table_name, mwaa_cnt, mwaa_st)
 
     @task(task_id='task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS', provide_context=True,
-        trigger_rule="all_done")
+        trigger_rule="all_done",
+        on_failure_callback=notify_api_on_error)
     def task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS(**kwargs):
 
         snow_hook = SnowflakeHook(snowflake_conn_id='conn_snowflake_insu')
@@ -360,11 +340,6 @@ with DAG(
 
             ora_schema, ora_table_name = ora_main_table.split('.')
 
-            truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
-            print("==================[TRUNCATE QEURY]==================")
-            print(truncate_query)
-            ora_main_cursor.execute(truncate_query)
-
             # 숫자형 컬럼 변환 (NaN을 None으로 변환)
             for col in df_tf.select_dtypes(include=['number']).columns:
                 df_tf[col] = df_tf[col].astype(float).where(df_tf[col].notnull(), None)
@@ -418,25 +393,18 @@ with DAG(
         ora_main_connection.close()
         print("커넥션 종료")
 
-        task_name = kwargs['ti'].task_id[5:]
-        type = "daily"
-        schema_name = ora_schema
-        table_name = ora_table_name
-        mwaa_cnt = len(df)
-        mwaa_st = pendulum.now(KST)
-        reverse_verfi(task_name, type, schema_name, table_name, mwaa_cnt, mwaa_st)
 
 
-    task_SP_HDHS_CU_CUST_STAT_DTL_DW = PythonOperator(
-        task_id="task_SP_HDHS_CU_CUST_STAT_DTL_DW",
-        python_callable=execute_procedure,
-        op_args=["HDHS_CU.SP_HDHS_CU_CUST_STAT_DTL_DW", p_start, p_end,"conn_oracle_main"],
-        trigger_rule="all_done",
-        provide_context=True,
-        on_failure_callback=notify_api_on_error
-    )
+    # task_SP_HDHS_CU_CUST_STAT_DTL_DW = PythonOperator(
+    #     task_id="task_SP_HDHS_CU_CUST_STAT_DTL_DW",
+    #     python_callable=execute_procedure_stat,
+    #     op_args=["HDHS_CU.SP_HDHS_CU_CUST_STAT_DTL_DW", p_start, p_end,ora_main_conn_id],
+    #     trigger_rule="all_done",
+    #     provide_context=True,
+    #     # on_failure_callback=notify_api_on_error
+    # )
 
     task_CU_CUST_STAT_DTL_TO_HDHS = task_CU_CUST_STAT_DTL_TO_HDHS()
     task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS = task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS()
 
-    task_SP_TRUNCATE_FOR_DW >> task_CU_CUST_STAT_DTL_TO_HDHS >> [task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS , task_SP_HDHS_CU_CUST_STAT_DTL_DW]
+    task_SP_TRUNCATE_FOR_DW >> task_CU_CUST_STAT_DTL_TO_HDHS >> task_CU_VLID_TERM_EMAIL_DTL_TO_HDHS
