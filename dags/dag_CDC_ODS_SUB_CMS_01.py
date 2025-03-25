@@ -2,6 +2,7 @@ from airflow import DAG
 from airflow.providers.jdbc.hooks.jdbc import JdbcHook
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from common.notify_error_functions import notify_api_on_error
+from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
 import pendulum
 import numpy as np
 import pandas as pd
@@ -243,16 +244,28 @@ def task_DWCT_HSPLIT_c_01 (table, hsplit_columns, hsplit_primary_keys):
             insert_columns = ", ".join(columns)
             insert_values = ", ".join([f"source.{col}" for col in columns])
 
+            # PARTITION BY 구문을 자동으로 만듦
+            partition_key = ", ".join(hsplit_primary_keys)
+            order_key = "ROW_DATE DESC"  # 정렬 기준은 필요에 따라 바꾸세요
+
             merge_query = f"""
                             MERGE INTO {schema}.{table_name} AS target
-                            USING {schema}.{temp_table_name} AS source
+                            USING (
+                                SELECT *
+                                FROM (
+                                    SELECT *,
+                                           ROW_NUMBER() OVER (PARTITION BY {partition_key} ORDER BY {order_key}) AS rn
+                                    FROM {schema}.{temp_table_name}
+                                ) sub
+                                WHERE rn = 1
+                            ) AS source
                             ON {merge_condition}
                             WHEN MATCHED THEN
                                 UPDATE SET {update_set}
                             WHEN NOT MATCHED THEN
                                 INSERT ({insert_columns})
                                 VALUES ({insert_values});
-                            """
+                        """
 
             print("==================[merge_query]==================")
             print(merge_query)
@@ -588,15 +601,15 @@ def task_DWCT_HAGENT_c_01 (table, hagent_columns, hagent_primary_keys):
             insert_values = ", ".join([f"source.{col}" for col in columns])
 
             merge_query = f"""
-                                        MERGE INTO {schema}.{table_name} AS target
-                                        USING {schema}.{temp_table_name} AS source
-                                        ON {merge_condition}
-                                        WHEN MATCHED THEN
-                                            UPDATE SET {update_set}
-                                        WHEN NOT MATCHED THEN
-                                            INSERT ({insert_columns})
-                                            VALUES ({insert_values})
-                                        """
+                        MERGE INTO {schema}.{table_name} AS target
+                        USING {schema}.{temp_table_name} AS source
+                        ON {merge_condition}
+                        WHEN MATCHED THEN
+                            UPDATE SET {update_set}
+                        WHEN NOT MATCHED THEN
+                            INSERT ({insert_columns})
+                            VALUES ({insert_values})
+                        """
 
             print("==================[merge_query]==================")
             print(merge_query)
@@ -608,12 +621,16 @@ def task_DWCT_HAGENT_c_01 (table, hagent_columns, hagent_primary_keys):
 # DAG 정의
 with DAG(
         dag_id="dag_CDC_ODS_SUB_CMS_01",
-        schedule='30 4 * * *',
+        schedule='40 1 * * *',
         start_date=pendulum.datetime(2025, 3, 19, tz="Asia/Seoul"),
         catchup=False,
         dagrun_timeout=datetime.timedelta(minutes=60),
         tags=["현대홈쇼핑","DD01_0030_DAILY_MAIN"]
 ) as dag:
+
+    task_ETL_SCHEDULE_c_01 = etlScheduleUpdateOperator(
+        task_id="task_ETL_SCHEDULE_c_01"
+    )
 
 
     task_DWCT_HSPLIT_c_01 = PythonOperator(
@@ -644,5 +661,5 @@ with DAG(
     )
 
 
-    task_DWCT_HSPLIT_c_01 >> task_DWCT_DSPLIT_c_01 >> task_DWCT_DAGENT_c_01
+    task_ETL_SCHEDULE_c_01 >> task_DWCT_HSPLIT_c_01 >> task_DWCT_DSPLIT_c_01 >> task_DWCT_DAGENT_c_01
 

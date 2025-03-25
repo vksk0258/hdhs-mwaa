@@ -6,7 +6,7 @@ from operators.etl_schedule_update_operator import etlScheduleUpdateOperator
 import numpy as np
 from common.notify_error_functions import notify_api_on_error
 import pendulum
-from datetime import datetime, timedelta
+import datetime
 import pandas as pd
 import boto3
 import json
@@ -42,8 +42,8 @@ params = json.load(response['Body'])
 p_start = f"{params.get('$$P_START')}000000"
 p_end = f"{params.get('$$P_END')}235959"
 
-fm_p_start = datetime.strptime(p_start, "%Y%m%d%H%M%S")
-fm_p_end = datetime.strptime(p_end, "%Y%m%d%H%M%S")
+fm_p_start = datetime.datetime.strptime(p_start, "%Y%m%d%H%M%S")
+fm_p_end = datetime.datetime.strptime(p_end, "%Y%m%d%H%M%S")
 
 
 postgres_hook = PostgresHook(postgres_conn_id='conn_postgres_hdhs_reading')
@@ -241,16 +241,16 @@ def process_in_batches_sep_hour(table, columns, pk_columns):
             s3_key = f"{s3_prefix}LOAD{chunk_index:08d}.parquet"
             file_name = f"{tmp_dir}/LOAD{chunk_index:08d}.parquet"
 
-            df.to_parquet(file_name, engine='pyarrow', index=False)
-            print(f"Data batch {chunk_index} saved to {file_name}")
+        df.to_parquet(file_name, engine='pyarrow', index=False)
+        print(f"Data batch {chunk_index} saved to {file_name}")
 
-            os.system(f"aws s3 cp {file_name} s3://{s3_bucket_name}/{s3_key}")
-            print(f"Uploaded {file_name} to s3://{s3_bucket_name}/{s3_key}")
+        os.system(f"aws s3 cp {file_name} s3://{s3_bucket_name}/{s3_key}")
+        print(f"Uploaded {file_name} to s3://{s3_bucket_name}/{s3_key}")
 
-            os.remove(file_name)
-            print(f"Deleted {file_name} from local directory")
+        os.remove(file_name)
+        print(f"Deleted {file_name} from local directory")
 
-            chunk_index += 1
+        chunk_index += 1
 
     with snowflake_hook.get_conn() as snowflake_conn:
         with snowflake_conn.cursor() as snowflake_cursor:
@@ -387,7 +387,7 @@ with DAG(
           provide_context=True,
           on_failure_callback=notify_api_on_error)
     def task_AM_ALML_ITEM_INTL_DTL(table):
-        process_in_batches_sep_hour(table, ITEM_INTL_DTL_COLUMNS, ITEM_INTL_DTL_pk)
+        process_in_batches(table, ITEM_INTL_DTL_COLUMNS, ITEM_INTL_DTL_pk)
 
     # Task execution
     task_ETL_SCHEDULE_c_01 >> task_AM_ALML_MD_VEN_INTL_SETUP_DTL(TABLE_NAME_LIST[0]) >> task_AM_ALML_INTL_EXCP_SETUP_DTL(TABLE_NAME_LIST[1]) >> task_AM_ALML_ITEM_INTL_DTL(TABLE_NAME_LIST[2])

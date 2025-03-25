@@ -104,12 +104,10 @@ def snow_to_snow_merge2(snow_conn_id, ora_main_conn_id, snow_table, ora_main_tab
                 ora_main_cursor.executemany(merge_query, batch)
                 ora_main_connection.commit()
 
-
                 print(f"총{len(df)}건 중 {i+10000}건 커밋 완료")
 
     ora_main_connection.close()
     print("커넥션 종료")
-
 
 
 def snow_to_snow_merge(snow_conn_id, ora_main_conn_id, snow_table, ora_main_table, columns, pk_columns, condition_query, **kwargs):

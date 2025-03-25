@@ -18,7 +18,6 @@ client_path = Variable.get("client_path")
 var_dict = json.loads(var_text)
 
 def ora_to_snow_merge(etl_conn_id, load_conn_id, etl_table, load_table, columns, pk_columns, condition_query):
-    import os
     """
     특정 테이블 데이터를 처리하고 Snowflake에 MERGE 합니다.
     """
