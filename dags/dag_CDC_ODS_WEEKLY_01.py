@@ -111,7 +111,6 @@ def snow_to_snow_merge2(snow_conn_id, ora_main_conn_id, snow_table, ora_main_tab
     print("커넥션 종료")
 
 
-
 def snow_to_snow_merge(snow_conn_id, ora_main_conn_id, snow_table, ora_main_table, columns, pk_columns, condition_query, **kwargs):
     """
     특정 테이블 데이터를 처리하고 Snowflake에 MERGE 합니다.
@@ -126,7 +125,7 @@ def snow_to_snow_merge(snow_conn_id, ora_main_conn_id, snow_table, ora_main_tabl
     with snow_hook.get_conn() as snow_connection:
         with ora_main_connection.cursor() as ora_main_cursor:
 
-            truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
+            truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('HDHS_DW','{ora_table_name}_TEMP')"
             print("==================[TRUNCATE QEURY]==================")
             print(truncate_query)
             ora_main_cursor.execute(truncate_query)
@@ -144,20 +143,17 @@ def snow_to_snow_merge(snow_conn_id, ora_main_conn_id, snow_table, ora_main_tabl
             print(f"## {snow_table} 조회 카운트 : {len(df)}")
             print(str(df.head(1)))
 
-            # 숫자형 컬럼 변환 (NaN을 None으로 변환)
-            for col in df.select_dtypes(include=['number']).columns:
-                df[col] = df[col].astype(float).where(df[col].notnull(), None)
-
+            # 숫자형 컬럼 변환 (NaN -> None, float -> Decimal)
             for col in df.select_dtypes(include=['number']).columns:
                 df[col] = df[col].apply(lambda x: Decimal(str(x)) if pd.notnull(x) else None)
 
-            # 날짜 컬럼 유지 및 변환하지 않음
-            date_columns = df.select_dtypes(include=['datetime', 'datetimetz']).columns
+            # 날짜 컬럼 리스트
+            date_columns = df.select_dtypes(include=['datetime', 'datetimetz']).columns.tolist()
 
-            # Insert Query 수정
+            # INSERT 쿼리 생성
             insert_query = f"""
-                INSERT INTO {ora_main_table} ({", ".join(columns)})
-                VALUES ({", ".join([f"TO_TIMESTAMP(:{i + 1}, 'YYYY-MM-DD HH24:MI:SS')" if col in date_columns else f":{i + 1}" for i, col in enumerate(columns)])})
+                INSERT INTO {ora_main_table}_TEMP ({", ".join(columns)})
+                VALUES ({", ".join([f":{i + 1}" for i in range(len(columns))])})
             """
 
             # executemany 실행 전에 데이터 타입 변환 (날짜 컬럼만 문자열로 변환)

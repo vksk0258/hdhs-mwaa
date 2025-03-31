@@ -8,7 +8,6 @@ from airflow.models import Variable  # Airflow 변수 관리
 from airflow.utils.task_group import TaskGroup
 import pandas as pd  # 데이터프레임 작업을 위한 pandas
 import boto3
-from sqlalchemy import create_engine
 import os
 from airflow.operators.python import PythonOperator
 

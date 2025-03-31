@@ -307,6 +307,7 @@ def process_in_batches_sep_hour(table, columns, pk_columns):
             print(merge_query)
 
             snowflake_cursor.execute(merge_query)
+            snowflake_conn.commit()
             print(f"{temp_table_name} 머지 완료!!!!")
 
 
