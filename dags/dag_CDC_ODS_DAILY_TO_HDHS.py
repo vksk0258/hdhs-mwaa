@@ -304,35 +304,36 @@ with DAG(
         trigger_rule="all_done"
     )
 
-    task_CU_CUST_MKTG_AGR_MST_TO_HDHS = PythonOperator(
-        task_id="task_CU_CUST_MKTG_AGR_MST_TO_HDHS",
-        python_callable=snow_to_snow_merge2,
-        op_args=['conn_snowflake_insu',
-                 ora_main_conn_id,
-                 var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['SNOW_TABLE'],
-                 var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['ORA_MAIN_TABLE'],
-                 var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['COLUMNS'],
-                 var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['PK_COLUMNS'],
-                 task_CU_CUST_MKTG_MST_TO_HDHS_QEURY],
-        provide_context=True,
-        on_failure_callback=notify_api_on_error,
-        trigger_rule="all_done"
-    )
-
-    task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS = PythonOperator(
-        task_id="task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS",
-        python_callable=snow_to_snow_merge2,
-        op_args=['conn_snowflake_insu',
-                 ora_main_conn_id,
-                 var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['SNOW_TABLE'],
-                 var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
-                 var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['COLUMNS'],
-                 var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['PK_COLUMNS'],
-                 task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS_QEURY],
-        provide_context=True,
-        on_failure_callback=notify_api_on_error,
-        trigger_rule="all_done"
-    )
+    # 20250402: dag_CDC_MART_MKTG_AGR_01로 TASK 이동(유길택)
+    # task_CU_CUST_MKTG_AGR_MST_TO_HDHS = PythonOperator(
+    #     task_id="task_CU_CUST_MKTG_AGR_MST_TO_HDHS",
+    #     python_callable=snow_to_snow_merge2,
+    #     op_args=['conn_snowflake_insu',
+    #              ora_main_conn_id,
+    #              var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['SNOW_TABLE'],
+    #              var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['ORA_MAIN_TABLE'],
+    #              var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['COLUMNS'],
+    #              var_dict['task_CU_CUST_MKTG_AGR_MST_TO_HDHS']['PK_COLUMNS'],
+    #              task_CU_CUST_MKTG_MST_TO_HDHS_QEURY],
+    #     provide_context=True,
+    #     on_failure_callback=notify_api_on_error,
+    #     trigger_rule="all_done"
+    # )
+    #
+    # task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS = PythonOperator(
+    #     task_id="task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS",
+    #     python_callable=snow_to_snow_merge2,
+    #     op_args=['conn_snowflake_insu',
+    #              ora_main_conn_id,
+    #              var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['SNOW_TABLE'],
+    #              var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['ORA_MAIN_TABLE'],
+    #              var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['COLUMNS'],
+    #              var_dict['task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS']['PK_COLUMNS'],
+    #              task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS_QEURY],
+    #     provide_context=True,
+    #     on_failure_callback=notify_api_on_error,
+    #     trigger_rule="all_done"
+    # )
 
     task_BCU_CUST_TNDC_INF_TO_HDHS = PythonOperator(
         task_id="task_BCU_CUST_TNDC_INF_TO_HDHS",
@@ -583,8 +584,6 @@ with DAG(
     task_RAR_REAL_SWRT_ETC_DTL_TO_HDHS >> \
     task_RAR_REAL_SWRT_ONLN_DTL_TO_HDHS >> \
     task_RAR_REAL_SWRT_ONLN_ETC_DTL_TO_HDHS >> \
-    task_CU_CUST_MKTG_AGR_MST_TO_HDHS >> \
-    task_CU_MKTG_AGR_EMAIL_DTL_TO_HDHS >> \
     task_BCU_CUST_TNDC_INF_TO_HDHS >> \
     task_HES_RNTL_ARLT_DTL_TO_HDHS >> \
     task_RAR_SALE_REAL_SMR_TO_HDHS >> \

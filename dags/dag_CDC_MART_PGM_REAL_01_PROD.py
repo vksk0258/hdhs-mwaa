@@ -19,9 +19,9 @@ p_end = params.get("$$P_END")
 
 
 with DAG(
-    dag_id="dag_CDC_MART_PGM_REAL_01_TEST",
+    dag_id="dag_CDC_MART_PGM_REAL_01_PROD",
     schedule_interval=None,
-    tags=["TEST"]
+    tags=["현대홈쇼핑","dag_CDC_MART_01","MART프로시져","PROD"]
 ) as dag:
     task_SP_TRUNC_MORF_BITM_SELL_REAL = PythonOperator(
         task_id="task_SP_TRUNC_MORF_BITM_SELL_REAL",
@@ -50,96 +50,96 @@ with DAG(
 
     # Group 2
     with TaskGroup("grp_real_smr_3") as grp_real_smr_3:
-        t1 = PythonOperator(task_id="task_SP_RAR_BITM_SELL_REAL_SMR_3_TEST_F015",
+        t1 = PythonOperator(task_id="task_SP_RAR_BITM_SELL_REAL_SMR_3_F015",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_RAR_BITM_SELL_REAL_SMR_3_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_RAR_BITM_SELL_REAL_SMR_3", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t2 = PythonOperator(task_id="task_SP_RAR_BITM_SELL_REAL_SMR_3_TEST_D028",
+        t2 = PythonOperator(task_id="task_SP_RAR_BITM_SELL_REAL_SMR_3_D028",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_RAR_BITM_SELL_REAL_SMR_3_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_RAR_BITM_SELL_REAL_SMR_3", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t3 = PythonOperator(task_id="task_SP_RAR_BITM_SELL_REAL_SMR_3_TEST_D056",
+        t3 = PythonOperator(task_id="task_SP_RAR_BITM_SELL_REAL_SMR_3_D056",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_RAR_BITM_SELL_REAL_SMR_3_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_RAR_BITM_SELL_REAL_SMR_3", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t4 = PythonOperator(task_id="task_SP_RAR_BITM_SELL_REAL_SMR_3_TEST_D084",
+        t4 = PythonOperator(task_id="task_SP_RAR_BITM_SELL_REAL_SMR_3_D084",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_RAR_BITM_SELL_REAL_SMR_3_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_RAR_BITM_SELL_REAL_SMR_3", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
         [t1, t2, t3, t4]
 
     # Group 3
     with TaskGroup("grp_exp_fct") as grp_exp_fct:
-        t1 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_EXP_FCT_02_TEST_D000", python_callable=execute_procedure,
-                            op_args=["SP_RIA_BITM_ORD_EXP_FCT_02_TEST", p_start, p_end, 'conn_snowflake_etl'],
+        t1 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_EXP_FCT_02_D000", python_callable=execute_procedure,
+                            op_args=["SP_RIA_BITM_ORD_EXP_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t2 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_TEST_F015", python_callable=execute_procedure_dycl,
-                            op_args=["SP_RIA_BITM_ORD_REAL_FCT_TEST", p_start, p_end, 'conn_snowflake_etl'],
+        t2 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_F015", python_callable=execute_procedure_dycl,
+                            op_args=["SP_RIA_BITM_ORD_REAL_FCT", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t3 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_TEST_D028", python_callable=execute_procedure_dycl,
-                            op_args=["SP_RIA_BITM_ORD_REAL_FCT_TEST", p_start, p_end, 'conn_snowflake_etl'],
+        t3 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_D028", python_callable=execute_procedure_dycl,
+                            op_args=["SP_RIA_BITM_ORD_REAL_FCT", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t4 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_TEST_D056", python_callable=execute_procedure_dycl,
-                            op_args=["SP_RIA_BITM_ORD_REAL_FCT_TEST", p_start, p_end, 'conn_snowflake_etl'],
+        t4 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_D056", python_callable=execute_procedure_dycl,
+                            op_args=["SP_RIA_BITM_ORD_REAL_FCT", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t5 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_TEST_D084", python_callable=execute_procedure_dycl,
-                            op_args=["SP_RIA_BITM_ORD_REAL_FCT_TEST", p_start, p_end, 'conn_snowflake_etl'],
+        t5 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_D084", python_callable=execute_procedure_dycl,
+                            op_args=["SP_RIA_BITM_ORD_REAL_FCT", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
         [t1, t2, t3, t4, t5]
 
     # Group 4
     with TaskGroup("grp_real_ord_for_sale_news") as grp_real_ord_for_sale_news:
-        t1 = PythonOperator(task_id="task_SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_TEST_F015",
+        t1 = PythonOperator(task_id="task_SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_F015",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t2 = PythonOperator(task_id="task_SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_TEST_D028",
+        t2 = PythonOperator(task_id="task_SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_D028",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t3 = PythonOperator(task_id="task_SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_TEST_D056",
+        t3 = PythonOperator(task_id="task_SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_D056",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t4 = PythonOperator(task_id="task_SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_TEST_D084",
+        t4 = PythonOperator(task_id="task_SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_D084",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_BITM_SELL_REAL_ORD_FOR_SALE_NEWS", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
         [t1, t2, t3, t4]
 
     # Group 5
     with TaskGroup("grp_final_real") as grp_final_real:
-        t1 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_02_TEST_F015",
+        t1 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_02_F015",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_RIA_BITM_ORD_REAL_FCT_02_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_RIA_BITM_ORD_REAL_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t2 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_02_TEST_D028",
+        t2 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_02_D028",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_RIA_BITM_ORD_REAL_FCT_02_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_RIA_BITM_ORD_REAL_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t3 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_02_TEST_D056",
+        t3 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_02_D056",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_RIA_BITM_ORD_REAL_FCT_02_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_RIA_BITM_ORD_REAL_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t4 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_02_TEST_D084",
+        t4 = PythonOperator(task_id="task_SP_RIA_BITM_ORD_REAL_FCT_02_D084",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_RIA_BITM_ORD_REAL_FCT_02_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_RIA_BITM_ORD_REAL_FCT_02", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t5 = PythonOperator(task_id="task_SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2_TEST_F015",
+        t5 = PythonOperator(task_id="task_SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2_F015",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t6 = PythonOperator(task_id="task_SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2_TEST_D028",
+        t6 = PythonOperator(task_id="task_SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2_D028",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t7 = PythonOperator(task_id="task_SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2_TEST_D056",
+        t7 = PythonOperator(task_id="task_SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2_D056",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
-        t8 = PythonOperator(task_id="task_SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2_TEST_D084",
+        t8 = PythonOperator(task_id="task_SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2_D084",
                             python_callable=execute_procedure_dycl,
-                            op_args=["SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2_TEST", p_start, p_end, 'conn_snowflake_etl'],
+                            op_args=["SP_RAR_BITM_ORD_PNTM_SELL_REAL_SMR_2", p_start, p_end, 'conn_snowflake_etl'],
                             provide_context=True, on_failure_callback=notify_api_on_error)
         [t1, t2, t3, t4, t5, t6, t7, t8]
 
@@ -151,10 +151,10 @@ with DAG(
         on_failure_callback=notify_api_on_error
     )
 
-    task_SP_RIA_BITM_ORD_EXP_FCT_TEST_D000 = PythonOperator(
-        task_id="task_SP_RIA_BITM_ORD_EXP_FCT_TEST_D000",
+    task_SP_RIA_BITM_ORD_EXP_FCT_D000 = PythonOperator(
+        task_id="task_SP_RIA_BITM_ORD_EXP_FCT_D000",
         python_callable=execute_procedure,
-        op_args=["SP_RIA_BITM_ORD_EXP_FCT_TEST", p_start, p_end, 'conn_snowflake_etl'],
+        op_args=["SP_RIA_BITM_ORD_EXP_FCT", p_start, p_end, 'conn_snowflake_etl'],
         provide_context=True,
         on_failure_callback=notify_api_on_error
     )
@@ -168,18 +168,17 @@ with DAG(
     )
 
 # 임시 주석 처리 : 운영반영시에는 주석 해제 해야함.
-    # task_SP_RAR_REAl_SMR_BROD_01 = PythonOperator(
-    #     task_id="task_SP_RAR_REAl_SMR_BROD_01",
-    #     python_callable=execute_procedure,
-    #     op_args=["SP_RAR_REAl_SMR_BROD", p_start, p_end, 'conn_snowflake_etl'],
-    #     provide_context=True,
-    #     on_failure_callback=notify_api_on_error
-    # )
+    task_SP_RAR_REAl_SMR_BROD_01 = PythonOperator(
+        task_id="task_SP_RAR_REAl_SMR_BROD_01",
+        python_callable=execute_procedure,
+        op_args=["SP_RAR_REAl_SMR_BROD", p_start, p_end, 'conn_snowflake_etl'],
+        provide_context=True,
+        on_failure_callback=notify_api_on_error
+    )
 
 
     task_SP_TRUNC_MORF_BITM_SELL_REAL >>\
     grp_real_ord >> grp_real_smr_3 >> \
-    task_SP_BITM_SELL_EXP_ORD_D000 >> task_SP_RIA_BITM_ORD_EXP_FCT_TEST_D000 >> task_SP_BITM_SELL_EXP_ORD_FOR_SALE_NEWS_D000 >> \
-    grp_exp_fct >> grp_real_ord_for_sale_news >> grp_final_real \
-# 임시 주석 처리 : 운영반영시에는 주석 해제 해야함.
-    # >> task_SP_RAR_REAl_SMR_BROD_01
+    task_SP_BITM_SELL_EXP_ORD_D000 >> task_SP_RIA_BITM_ORD_EXP_FCT_D000 >> task_SP_BITM_SELL_EXP_ORD_FOR_SALE_NEWS_D000 >> \
+    grp_exp_fct >> grp_real_ord_for_sale_news >> grp_final_real >>\
+    task_SP_RAR_REAl_SMR_BROD_01

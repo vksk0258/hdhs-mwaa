@@ -192,7 +192,7 @@ AND CHG_DTM <= TO_DATE('{p_end}' || '235959', 'YYYYMMDDHH24MISS') + 2
 
 # Define the DAG
 with DAG(
-    dag_id="dag_CDC_ODS_MONTHLY_TO_HDHS",
+    dag_id="dag_CDC_ODS_MONTHLY_TO_HDHS_TEST",
     schedule_interval=None,
     dagrun_timeout=timedelta(minutes=500),
     tags=["현대홈쇼핑","ODS","역방향"]
@@ -202,7 +202,7 @@ with DAG(
         if p_end[6:8] == '01': # 7번째(인덱스 6)부터 2글자
             return ['task_SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL',
                     'task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV',
-                    'task_TMP_GOLD_CUST_NO_DW_TO_HDHS',
+                    'task_TMP_GOLD_CUST_NO_TO_HDHS',
                     'task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql',
                     'task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01'
                     ]
@@ -427,7 +427,7 @@ with DAG(
             on_clause = " AND ".join([f"target.{col} = source.{col}" for col in pk_columns])
 
             merge_query = f"""
-                            MERGE INTO {ora_main_table} target
+                            MERGE INTO HDHS_DW.{ora_table_name}_MERGE target
                             USING (SELECT {', '.join([':' + str(i + 1) + ' AS ' + col for i, col in enumerate(columns)])} FROM DUAL) source
                             ON ({on_clause})
                             WHEN MATCHED THEN
@@ -478,7 +478,7 @@ with DAG(
 
                 ora_schema, ora_table_name = ora_main_table.split('.')
 
-                truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('{ora_schema}','{ora_table_name}')"
+                truncate_query = f"CALL HDHS.SP_CM_TRUNC_TB('HDHS_DW','{ora_table_name}_MERGE')"
                 print("==================[TRUNCATE QEURY]==================")
                 print(truncate_query)
                 ora_main_cursor.execute(truncate_query)
@@ -576,7 +576,7 @@ with DAG(
 
                     # INSERT 쿼리 생성
                     insert_query = f"""
-                                    INSERT INTO {ora_schema}.{ora_table_name} ({", ".join(columns)})
+                                    INSERT INTO HDHS_DW.{ora_table_name}_MERGE ({", ".join(columns)})
                                     VALUES ({", ".join([f":{i + 1}" for i in range(len(columns))])})
                                 """
 
@@ -677,7 +677,7 @@ with DAG(
             on_clause = " AND ".join([f"target.{col} = source.{col}" for col in pk_columns])
 
             merge_query = f"""
-                            MERGE INTO {ora_main_table} target
+                            MERGE INTO HDHS_DW.{ora_table_name}_MERGE target
                             USING (SELECT {', '.join([':' + str(i + 1) + ' AS ' + col for i, col in enumerate(columns)])} FROM DUAL) source
                             ON ({on_clause})
                             WHEN MATCHED THEN
@@ -710,16 +710,15 @@ with DAG(
 
     task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV = task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV(p_start)
     task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01 = task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01(p_start)
+    task_TMP_GOLD_CUST_NO_TO_HDHS = task_TMP_GOLD_CUST_NO_DW_TO_HDHS()
     task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql = task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql(p_start,p_end,ora_main_conn_id)
-    task_TMP_GOLD_CUST_NO_DW_TO_HDHS = task_TMP_GOLD_CUST_NO_DW_TO_HDHS()
 
 
-    check_monthly(p_end) >> [task_SP_BAR_ITEM_HNDL_ARLT_DLINE_DTL,
-     task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV,
-     task_TMP_GOLD_CUST_NO_DW_TO_HDHS,
-     task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql,
-     task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01,
-     task_IM_VEN_CNTB_RATE_SMR_TO_HDHS]
+    [task_CU_ITNT_CUST_GRD_INF_TMP_i_01_TO_HDHS_DEV,
+    task_TMP_GOLD_CUST_NO_TO_HDHS,
+    task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql,
+    task_CU_ITNT_PET_CUST_GRD_INF_TMP_TO_HDHS_i_01,
+    task_IM_VEN_CNTB_RATE_SMR_TO_HDHS]
 
     task_CU_TCS_CUST_HIS_TO_HDHS_pre_sql >> task_CU_TCS_CUST_HIS_TO_HDHS
 

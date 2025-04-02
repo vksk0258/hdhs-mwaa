@@ -1,9 +1,16 @@
-
 from airflow import DAG
 import datetime
 import pendulum
 from airflow.models import Variable
 from airflow.operators.bash import BashOperator
+from airflow.operators.python import ShortCircuitOperator
+
+def skip_on_first_two_days():
+    today = datetime.datetime.now(pendulum.timezone("Asia/Seoul"))
+    if today.day in [1, 2]:
+        print("Skipping DAG run on 1st or 2nd of the month.")
+        return False
+    return True
 
 with DAG(
     dag_id="dag_chg_env_medium_daily",
@@ -15,6 +22,11 @@ with DAG(
 ) as dag:
     var_value = Variable.get("chg_env_class_to_medium_cli")
 
+    skip_check = ShortCircuitOperator(
+        task_id="check_if_should_run",
+        python_callable=skip_on_first_two_days
+    )
+
     bash_var_1 = BashOperator(
         task_id="bash_var_1",
         bash_command=f"echo variable: {var_value}"
@@ -22,8 +34,7 @@ with DAG(
 
     bash_var_2 = BashOperator(
         task_id="bash_var_2",
-        # 스케쥴러의 부하를 줄이기위해 템플릿 문법으로 전역변수를 가져오는 것을 추천함
         bash_command=var_value
     )
 
-    bash_var_1 >> bash_var_2
+    skip_check >> bash_var_1 >> bash_var_2

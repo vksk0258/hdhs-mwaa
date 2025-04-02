@@ -1,5 +1,6 @@
 from airflow import DAG
 from airflow.providers.oracle.hooks.oracle import OracleHook
+from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 import pandas as pd
@@ -19,17 +20,13 @@ def oracle_conn_main_test(**kwargs):
     """
     Oracle DB에서 쿼리를 수행하고 결과를 XCom에 저장
     """
-    oracle_hook = OracleHook(
-        oracle_conn_id=conn,
-        thick_mode=True,
-        thick_mode_lib_dir=client_path)
+    oracle_hook = SnowflakeHook(snowflake_conn_id=conn)
 
     # Oracle DB 연결 및 쿼리 실행
     with oracle_hook.get_conn() as connection:
         with connection.cursor() as cursor:
 
             cursor.execute(sql_query)
-            cursor.execute("SELECT * FROM HDHS_DW.DW_EXEC_RST")
             rows = cursor.fetchall()
 
             for row in rows:
