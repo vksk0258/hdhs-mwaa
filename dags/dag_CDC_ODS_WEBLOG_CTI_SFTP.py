@@ -35,12 +35,14 @@ with DAG(
     dag_id="dag_CDC_ODS_WEBLOG_CTI_SFTP",
     schedule_interval="50 1 * * *",
     start_date=pendulum.datetime(2025, 3, 24, tz="Asia/Seoul"),
-    dagrun_timeout=timedelta(minutes=4000),
+    dagrun_timeout=timedelta(minutes=60),
     tags=["현대홈쇼핑", "DD01_0010_DAILY_MAIN", "CTI", 'Flat File',"Scheduled"]
 ) as dag:
 
     @task(task_id='seoul_logfile_conv',
         provide_context=True,
+        retries=5,
+        retry_delay=timedelta(seconds=10),
         on_failure_callback=notify_api_on_error,
         )
     def seoul_logfile_cov(**kwargs):
@@ -96,6 +98,8 @@ with DAG(
 
     @task(task_id='cheongju_logfile_conv',
         provide_context=True,
+        retries=5,
+        retry_delay=timedelta(seconds=10),
         on_failure_callback=notify_api_on_error,
         )
     def cheongju_logfile_cov(**kwargs):
@@ -150,6 +154,8 @@ with DAG(
         return f"s3://{bucket}/{s3_output_path}"
 
     @task(task_id='logfile_data_insert',
+        retries=5,
+        retry_delay=timedelta(seconds=10),
         provide_context=True,
         on_failure_callback=notify_api_on_error,
         )

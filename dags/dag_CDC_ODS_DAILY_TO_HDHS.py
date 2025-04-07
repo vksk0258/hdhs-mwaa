@@ -7,6 +7,7 @@ from common import reverse_task_variables as var
 from airflow.decorators import task
 from decimal import Decimal
 import json
+import time
 import numpy as np
 import pandas as pd
 from airflow.models import Variable
@@ -558,7 +559,7 @@ with DAG(
                  var_dict['task_OM_AFCR_ORD_ARLT_SMR']['PK_COLUMNS'],
                  task_OM_AFCR_ORD_ARLT_SMR_QUERY],
         provide_context=True,
-        # on_failure_callback=notify_api_on_error,
+        on_failure_callback=notify_api_on_error,
         trigger_rule="all_done"
     )
 
@@ -573,9 +574,18 @@ with DAG(
                  var_dict['task_OM_SCWD_DLU_ORD_ARLT_SMR']['PK_COLUMNS'],
                  task_OM_SCWD_DLU_ORD_ARLT_SMR_QUERY],
         provide_context=True,
-        # on_failure_callback=notify_api_on_error,
+        on_failure_callback=notify_api_on_error,
         trigger_rule="all_done"
     )
+
+    @task(task_id="task_wait_before_execution", trigger_rule="all_done")
+    def task_wait_before_execution():
+        print("Waiting for 5 minutes before proceeding...")
+        time.sleep(60)  # 300 seconds = 5 minutes
+        print("Wait is over. Proceeding to the next task.")
+
+
+    task_wait_before_execution = task_wait_before_execution()
 
     [task_BOD_ORD_DTL_TO_HDHS, task_RDM_SELL_MDA_DIM_TO_HDHS, task_RCA_MDA_AREA_CALL_HOU_FCT_TO_HDHS] >> \
     task_OM_AFCR_ORD_ARLT_SMR >> \
@@ -587,6 +597,7 @@ with DAG(
     task_BCU_CUST_TNDC_INF_TO_HDHS >> \
     task_HES_RNTL_ARLT_DTL_TO_HDHS >> \
     task_RAR_SALE_REAL_SMR_TO_HDHS >> \
+    task_wait_before_execution >> \
     task_RAR_ITEM_SALE_REAL_SMR_TO_HDHS >> \
     task_RAR_MDA_SALE_REAL_SMR_TO_HDHS >> \
     task_RAR_BITM_MDA_SELL_REAL_SMR_TO_HDHS >> \
