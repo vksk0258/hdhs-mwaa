@@ -18,12 +18,28 @@ conn = Variable.get("conn")
 
 def oracle_conn_main_test(**kwargs):
     """
-    Oracle DB에서 쿼리를 수행하고 결과를 XCom에 저장
+    Snowflake DB에서 쿼리를 수행하고 결과를 XCom에 저장
     """
-    oracle_hook = SnowflakeHook(snowflake_conn_id=conn)
+    oracle_hook = OracleHook(oracle_conn_id=conn, thick_mode=True, thick_mode_lib_dir=client_path)
 
     # Oracle DB 연결 및 쿼리 실행
     with oracle_hook.get_conn() as connection:
+        with connection.cursor() as cursor:
+
+            cursor.execute(sql_query)
+            rows = cursor.fetchall()
+
+            for row in rows:
+                print(row)
+
+def snow_conn_main_test(**kwargs):
+    """
+    Snowflake DB에서 쿼리를 수행하고 결과를 XCom에 저장
+    """
+    snowflake_hook = SnowflakeHook(snowflake_conn_id=conn)
+
+    # Oracle DB 연결 및 쿼리 실행
+    with snowflake_hook.get_conn() as connection:
         with connection.cursor() as cursor:
 
             cursor.execute(sql_query)
@@ -47,4 +63,12 @@ with DAG(
 
     )
 
-    oracle_conn_test_task
+    # PythonOperator 태스크 정의
+    snow_conn_main_test = PythonOperator(
+        task_id='snow_conn_main_test',
+        python_callable=snow_conn_main_test,
+        provide_context=True  # XCom 사용을 위해 추가
+
+    )
+
+    [oracle_conn_test_task,snow_conn_main_test]
